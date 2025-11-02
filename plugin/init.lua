@@ -3,11 +3,13 @@ vim.api.nvim_create_user_command("DeleteFile", function()
     call delete(expand('%'))
     bd!
   ]])
-end, {})
+end, {
+  desc = "Delete the current file and buffer.",
+})
 
 vim.api.nvim_create_autocmd("FileType", {
   pattern = { "lua" },
-  desc = "Keymaps and other config specifically for files",
+  desc = "Setup keymaps and other config specifically for files",
   group = vim.api.nvim_create_augroup("eap-lua-files", { clear = true }),
   callback = function()
     vim.bo.expandtab = true
