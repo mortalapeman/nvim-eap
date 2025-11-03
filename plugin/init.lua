@@ -1,4 +1,7 @@
-vim.api.nvim_create_user_command("DeleteFile", function()
+local util = require("eap.util")
+
+-- User Commands
+vim.api.nvim_create_user_command("FileDelete", function()
   vim.cmd([[
     call delete(expand('%'))
     bd!
@@ -7,6 +10,13 @@ end, {
   desc = "Delete the current file and buffer.",
 })
 
+vim.api.nvim_create_user_command("BufferCloseOthers", function()
+  util.wipe_other_buffers()
+end, {
+  desc = "Close all buffers minus current",
+})
+
+-- Auto Commands
 vim.api.nvim_create_autocmd("FileType", {
   pattern = { "lua" },
   desc = "Setup keymaps and other config specifically for files",

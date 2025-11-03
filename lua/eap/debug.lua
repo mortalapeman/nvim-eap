@@ -11,6 +11,7 @@ local function scratch_buffer()
   return buf_num
 end
 
+---@param text string Text to write to the scratch buffer
 local function write_to_buffer(text)
   local buf_num = scratch_buffer()
   local lines = vim.fn.split(text, "\r\n\\|\n")
@@ -18,6 +19,7 @@ local function write_to_buffer(text)
   vim.api.nvim_buf_set_lines(buf_num, index, index, false, lines)
 end
 
+---@param item any And value to render to text with vim.inspect
 M.print = function(item)
   write_to_buffer(">>")
   write_to_buffer(vim.inspect(item))
@@ -42,6 +44,9 @@ M.clear = function()
   for k, _ in pairs(debug_state) do
     debug_state[k] = nil
   end
+  local buf_num = scratch_buffer()
+  local index = vim.api.nvim_buf_line_count(buf_num)
+  vim.api.nvim_buf_set_lines(buf_num, 0, index, false, {})
 end
 
 M.get = function(name)
