@@ -1,5 +1,9 @@
 local M = {}
 
+M.buf_get_current_number = function()
+  return vim.fn.bufadd(vim.fn.expand("%"))
+end
+
 M.table_find_key = function(tbl, value)
   for k, v in pairs(tbl) do
     if value == v then
