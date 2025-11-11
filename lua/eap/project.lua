@@ -5,12 +5,6 @@ local logging = require("eap.logging")
 
 local logger = logging.get_logger("eap.project")
 
-local function table_exists(dbfile, tblname)
-  local sql = string.format("pragma table_info(%s);", tblname)
-  local _, error = sqlite.execute_sql(dbfile, sql)
-  return error == nil
-end
-
 ---@class Project
 ---@field project_id integer
 ---@field dir string
@@ -18,7 +12,7 @@ end
 ---@field active 0 | 1
 
 local function initialize_db(dbfile)
-  if not table_exists(dbfile, "project") then
+  if not sqlite.table_exists(dbfile, "project") then
     local sql = [[
       create table project (
         project_id integer primary key autoincrement

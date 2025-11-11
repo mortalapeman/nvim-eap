@@ -60,6 +60,8 @@ M.new_db_writer = function(dbfile, name)
   }
 end
 
+local logging_group = vim.api.nvim_create_augroup("Logging", { clear = true })
+
 ---@return LogWriter # Writer that writes to a buffer named EapLogs.
 M.new_buf_writer = function()
   local function get_buf()
@@ -77,6 +79,7 @@ M.new_buf_writer = function()
       local text = string.format("%s [%s] %s - %s", os.date("%H:%M:%S"), LOG_LEVEL_NAME[level], namespace, message)
       local lines = vim.fn.split(text, "\n")
       vim.api.nvim_buf_set_lines(buf, -1, -1, false, lines)
+      vim.cmd("doautocmd Logging User LogWrite")
     end,
   }
 end
@@ -87,6 +90,17 @@ M.show_buf_logs = function()
   local windows = vim.fn.win_findbuf(buf)
   if next(windows) == nil then
     vim.cmd("vsplit " .. "EapLogs")
+    vim.api.nvim_create_autocmd("User", {
+      pattern = "LogWrite",
+      group = logging_group,
+      callback = function()
+        windows = vim.fn.win_findbuf(buf)
+        local window = windows[1]
+        vim.api.nvim_win_call(window, function()
+          vim.cmd("norm! G")
+        end)
+      end,
+    })
   end
 end
 --- @class ScopedLogger
@@ -102,7 +116,7 @@ end
 --- @field info fun(message: string)
 --- @field debug fun(message: string)
 --- @field trace fun(message: string)
---- @field scope fun(scope: string, cb: fun(logger: ScopedLogger))
+--- @field scope fun(scope: string, cb: fun(logger: ScopedLogger): any)
 
 --- @class State
 --- @field writers LogWriter[] Array of registered logging writers.
@@ -130,6 +144,11 @@ M.get_logger = function(namespace)
     end
   end
 
+  local function pack(...)
+    local t = { ... }
+    return t
+  end
+
   local logger = {
     _type = "Logger",
     _namespace = namespace,
@@ -139,7 +158,7 @@ M.get_logger = function(namespace)
     debug = with_log_level(LOG_LEVEL.DEBUG, namespace),
     trace = with_log_level(LOG_LEVEL.TRACE, namespace),
     ---@param scope string
-    ---@param cb fun(logger: ScopedLogger)
+    ---@param cb fun(logger: ScopedLogger): any
     scope = function(scope, cb)
       local scoped = {
         error = with_log_level(LOG_LEVEL.ERROR, namespace .. "." .. scope),
@@ -149,8 +168,9 @@ M.get_logger = function(namespace)
         trace = with_log_level(LOG_LEVEL.TRACE, namespace .. "." .. scope),
       }
       scoped.debug("BEGIN")
-      cb(scoped)
+      local result = pack(cb(scoped))
       scoped.debug("END")
+      return unpack(result)
     end,
   }
   return logger
