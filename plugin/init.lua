@@ -1,7 +1,7 @@
-local util = require("eap.util")
-local logging = require("eap.logging")
+require("eap.logging").setup()
+require("eap.project").setup()
 
-logging.setup()
+local util = require("eap.util")
 
 -- User Commands
 vim.api.nvim_create_user_command("FileDelete", function()

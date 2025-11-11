@@ -1,7 +1,6 @@
-local M = {}
-
 local sqlite = require("eap.sqlite")
-local debug = require("eap.debug")
+
+local M = {}
 
 --- @enum log_level
 local LOG_LEVEL = {
@@ -33,7 +32,7 @@ local LOG_LEVEL_NAME = {
 ---@param dbfile string Path to database file
 ---@param name string Identifier for the writer.
 ---@return LogWriter # Log writer that will write to a sqlite database.
-M.new_db_writer = function(dbfile, name)
+function M.new_db_writer(dbfile, name)
   if not sqlite.table_exists(dbfile, "log_entry") then
     local sql = [[
       create table log_entry (
@@ -63,7 +62,7 @@ end
 local logging_group = vim.api.nvim_create_augroup("Logging", { clear = true })
 
 ---@return LogWriter # Writer that writes to a buffer named EapLogs.
-M.new_buf_writer = function()
+function M.new_buf_writer()
   local function get_buf()
     local buf_num = vim.fn.bufadd("EapLogs")
     local opt = vim.bo[buf_num]
@@ -85,7 +84,7 @@ M.new_buf_writer = function()
 end
 
 --- Show the current EapLogs buffer in a vertical split.
-M.show_buf_logs = function()
+function M.show_buf_logs()
   local buf = vim.fn.bufadd("EapLogs")
   local windows = vim.fn.win_findbuf(buf)
   if next(windows) == nil then
@@ -96,9 +95,11 @@ M.show_buf_logs = function()
       callback = function()
         windows = vim.fn.win_findbuf(buf)
         local window = windows[1]
-        vim.api.nvim_win_call(window, function()
-          vim.cmd("norm! G")
-        end)
+        if window then
+          vim.api.nvim_win_call(window, function()
+            vim.cmd("norm! G")
+          end)
+        end
       end,
     })
   end
@@ -130,7 +131,7 @@ local state = {
 
 --- @param namespace string Namespace for the returned logger.
 --- @return Logger # Logger for the provided namespace.
-M.get_logger = function(namespace)
+function M.get_logger(namespace)
   local cached_logger = state.loggers[namespace]
   if cached_logger ~= nil then
     return cached_logger
@@ -176,18 +177,18 @@ M.get_logger = function(namespace)
   return logger
 end
 
-M.writer_add = function(writer)
+function M.writer_add(writer)
   table.insert(state.writers, writer)
 end
 
-M.writer_all_clear = function()
+function M.writer_all_clear()
   state.writers = {}
 end
-M.logger_all_clear = function()
+function M.logger_all_clear()
   state.loggers = {}
 end
 
-M.setup = function()
+function M.setup()
   M.logger_all_clear()
   M.writer_all_clear()
   M.writer_add(M.new_buf_writer())
