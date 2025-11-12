@@ -1,17 +1,28 @@
 local sqlite = require("eap.sqlite")
+local logging = require("eap.logging")
 
 local M = {}
 
-local logger = require("eap.logging").get_logger("eap.project")
+local logger = logging.get_logger("eap.project")
 
----@class Project
----@field project_id integer
----@field dir string
----@field name string
----@field active 0 | 1
+---@class ProjectState
+---@field _dbfile string
+---@field new fun(dbfile: string): ProjectState
+---@field init fun(self: ProjectState)
+local ProjectState = {}
 
-local function initialize_db(dbfile)
-  if not sqlite.table_exists(dbfile, "project") then
+---@param dbfile string
+---@return ProjectState
+function ProjectState.new(dbfile)
+  local self = {
+    _dbfile = dbfile,
+  }
+  setmetatable(self, { __index = ProjectState })
+  return self
+end
+
+function ProjectState:init()
+  if not sqlite.table_exists(self._dbfile, "project") then
     local sql = [[
       create table project (
         project_id integer primary key autoincrement
@@ -27,12 +38,18 @@ local function initialize_db(dbfile)
         , foreign key (project_id) references project(project_id)
       );
     ]]
-    local _, error = sqlite.execute_sql(dbfile, sql)
+    local _, error = sqlite.execute_sql(self._dbfile, sql)
     if error and error ~= "No output" then
       logger.error(error)
     end
   end
 end
+
+---@class Project
+---@field project_id integer
+---@field dir string
+---@field name string
+---@field active 0 | 1
 
 local function project_add(dbfile, project_name, dir)
   local sql = [[
@@ -154,18 +171,31 @@ local function current_buf_project_match(dbfile)
   end)
 end
 
+-- vim.api.nvim_buf_get_name()
+-- vim.fn.getbufinfo()
+-- TODO: implement this
+
 function M.setup()
   local dbfilename = "eap-projects.db"
   local fullpath = vim.fs.joinpath(vim.fn.stdpath("data"), dbfilename)
-  initialize_db(fullpath)
+  local state = ProjectState.new(fullpath)
+  state:init()
 
   vim.api.nvim_create_user_command("CreateProject", function()
     create_project(fullpath)
   end, {
     desc = "Creates an entry in the projects database.",
   })
+  vim.api.nvim_create_user_command("SelectProject", function()
+    select_project(fullpath)
+  end, {
+    desc = "Creates an entry in the projects database.",
+  })
+
+  local project_augroup = vim.api.nvim_create_augroup("EapProjects", {})
 
   vim.api.nvim_create_autocmd("BufEnter", {
+    group = project_augroup,
     callback = function()
       local match = current_buf_project_match(fullpath)
       if match then
