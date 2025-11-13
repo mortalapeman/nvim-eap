@@ -5,6 +5,10 @@ local M = {}
 
 local logger = logging.get_logger("eap.project")
 
+local function find_git_root()
+  return vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
+end
+
 ---@class ProjectState
 ---@field _dbfile string
 ---@field new fun(dbfile: string): ProjectState
@@ -22,7 +26,7 @@ function ProjectState.new(dbfile)
 end
 
 function ProjectState:init()
-  if not sqlite.table_exists(self._dbfile, "project") then
+  if not vim.uv.fs_stat(self._dbfile) or not sqlite.table_exists(self._dbfile, "project") then
     local sql = [[
       create table project (
         project_id integer primary key autoincrement
@@ -45,23 +49,62 @@ function ProjectState:init()
   end
 end
 
+function ProjectState:reset()
+  if vim.uv.fs_stat(self._dbfile) then
+    vim.fn.delete(self._dbfile)
+  end
+end
+
+function ProjectState:show_info()
+  local sql = "select * from project;"
+  local result, _ = sqlite.execute_sql_md(self._dbfile, sql)
+  print(result or "No projects")
+  sql = "select * from buffer;"
+  result, _ = sqlite.execute_sql_md(self._dbfile, sql)
+  print(result or "No buffers")
+end
+
+local function buf_current_git_root()
+  local bufdir = vim.fn.expand("%:p:h")
+  local old_cwd = vim.uv.cwd()
+  vim.cmd("lcd " .. bufdir)
+  local root = find_git_root()
+  vim.cmd("lcd " .. old_cwd)
+  return root
+end
+
+function ProjectState:create_project()
+  logger.scope("create_project", function(logs)
+    vim.ui.input(
+      {
+        prompt = "Project Name: ",
+      },
+      ---@param name string
+      function(name)
+        if name ~= nil then
+          local git_root = buf_current_git_root()
+          local sql = [[
+          insert into project (dir, name, active)
+          values ('%s', '%s', 1);
+        ]]
+          local sql_with_params = string.format(sql, git_root, name)
+          local _, error = sqlite.execute_sql(self._dbfile, sql_with_params)
+          if error and error ~= "No output" then
+            logger.error(error)
+          end
+        else
+          logs.debug("No project")
+        end
+      end
+    )
+  end)
+end
+
 ---@class Project
 ---@field project_id integer
 ---@field dir string
 ---@field name string
 ---@field active 0 | 1
-
-local function project_add(dbfile, project_name, dir)
-  local sql = [[
-    insert into project (dir, name)
-    values ('%s', '%s');
-  ]]
-  local sql_with_params = string.format(sql, dir, project_name)
-  local _, error = sqlite.execute_sql(dbfile, sql_with_params)
-  if error and error ~= "No output" then
-    logger.error(error)
-  end
-end
 
 ---@param dbfile string
 ---@return Project[] | nil
@@ -75,6 +118,8 @@ local function inactive_projects(dbfile)
   return result
 end
 
+---@param dbfile string
+---@param project_id integer
 local function project_activate(dbfile, project_id)
   logger.scope("project_activate", function(logs)
     local sql = [[
@@ -100,28 +145,9 @@ local function project_activate(dbfile, project_id)
   end)
 end
 
-local function find_git_root()
-  return vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
-end
-
-local function create_project(dbfile)
-  logger.scope("create_project", function(logs)
-    vim.ui.input({
-      prompt = "Project Name: ",
-    }, function(name)
-      if name ~= nil then
-        local git_root = find_git_root()
-        project_add(dbfile, name, git_root)
-      else
-        logs.debug("No project")
-      end
-    end)
-  end)
-end
-
-local function select_project(dbfile)
+function ProjectState:select_project()
   logger.scope("select_project", function(logs)
-    local all_inactive_proj = inactive_projects(dbfile)
+    local all_inactive_proj = inactive_projects(self._dbfile)
     if all_inactive_proj == nil then
       logs.warn("No projects found")
       return
@@ -135,7 +161,7 @@ local function select_project(dbfile)
       ---@param choice Project
     }, function(choice)
       if choice ~= nil then
-        project_activate(dbfile, choice.project_id)
+        project_activate(self._dbfile, choice.project_id)
         vim.cmd("cd " .. choice.dir)
       end
     end)
@@ -176,20 +202,33 @@ end
 -- TODO: implement this
 
 function M.setup()
-  local dbfilename = "eap-projects.db"
-  local fullpath = vim.fs.joinpath(vim.fn.stdpath("data"), dbfilename)
+  local fullpath = vim.fs.joinpath(vim.fn.stdpath("data"), "eap-projects.db")
   local state = ProjectState.new(fullpath)
   state:init()
 
-  vim.api.nvim_create_user_command("CreateProject", function()
-    create_project(fullpath)
+  vim.api.nvim_create_user_command("ProjectCreate", function()
+    state:create_project()
   end, {
     desc = "Creates an entry in the projects database.",
   })
-  vim.api.nvim_create_user_command("SelectProject", function()
-    select_project(fullpath)
+
+  vim.api.nvim_create_user_command("ProjectSelect", function()
+    state:select_project()
   end, {
-    desc = "Creates an entry in the projects database.",
+    desc = "Select a project from the projects database.",
+  })
+
+  vim.api.nvim_create_user_command("ProjectReset", function()
+    state:reset()
+    state:init()
+  end, {
+    desc = "Reset the database to a blank state.",
+  })
+
+  vim.api.nvim_create_user_command("ProjectInfo", function()
+    state:show_info()
+  end, {
+    desc = "Show information about the current database state",
   })
 
   local project_augroup = vim.api.nvim_create_augroup("EapProjects", {})

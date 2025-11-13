@@ -29,6 +29,23 @@ local function execute_sql(dbfile, sql)
 end
 M.execute_sql = execute_sql
 
+function M.execute_sql_md(dbfile, sql)
+  local sql_split = vim.fn.split(sql, "\n")
+  local temp = vim.fn.tempname()
+  vim.fn.writefile(sql_split, temp)
+  local cmd = string.format("cat %s | sqlite3 -markdown '%s'", temp, dbfile)
+  local sqlite_output = vim.fn.system(cmd)
+  vim.fn.delete(temp)
+  if vim.v.shell_error ~= 0 then
+    return nil, string.format("An error occured excuting the SQL.\n\n %s", sqlite_output)
+  else
+    if sqlite_output == "" then
+      return nil, "No output"
+    end
+    return sqlite_output, nil
+  end
+end
+
 local function table_exists(dbfile, tblname)
   local sql = string.format("pragma table_info(%s);", tblname)
   local _, error = execute_sql(dbfile, sql)
