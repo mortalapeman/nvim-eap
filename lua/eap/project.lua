@@ -118,33 +118,6 @@ local function inactive_projects(dbfile)
   return result
 end
 
----@param dbfile string
----@param project_id integer
-local function project_activate(dbfile, project_id)
-  logger.scope("project_activate", function(logs)
-    local sql = [[
-      update project set active = 0;
-      update project set active = 1
-      where project_id = %s;
-      select
-        dir
-        , name
-      from project
-      where project_id = %s;
-    ]]
-    local sql_with_params = string.format(sql, project_id, project_id)
-    local result, error = sqlite.execute_sql(dbfile, sql_with_params)
-    if error and error ~= "No output" then
-      logs.error(error)
-    else
-      ---@type Project
-      local project = result[1]
-      logs.info(string.format("Swapping to Project: %s", project.name))
-      vim.cmd(string.format("cd %s", project.dir))
-    end
-  end)
-end
-
 function ProjectState:select_project()
   logger.scope("select_project", function(logs)
     local all_inactive_proj = inactive_projects(self._dbfile)
@@ -161,20 +134,17 @@ function ProjectState:select_project()
       ---@param choice Project
     }, function(choice)
       if choice ~= nil then
-        project_activate(self._dbfile, choice.project_id)
+        self:activate_project(choice.project_id)
         vim.cmd("cd " .. choice.dir)
       end
     end)
   end)
 end
 
-local function current_buf_project_match(dbfile)
-  return logger.scope("current_buf_project_match", function(log)
-    local bufdir = vim.fn.expand("%:p:h")
-    local old_cwd = vim.uv.cwd()
-    vim.cmd("lcd " .. bufdir)
-    local root = find_git_root()
-    vim.cmd("lcd " .. old_cwd)
+---@return integer | nil # project_id matching the current buffer.
+function ProjectState:buf_current_project()
+  return logger.scope("buf_current_project", function(log)
+    local root = buf_current_git_root()
     local sql = [[
       select project_id
       from project
@@ -182,7 +152,7 @@ local function current_buf_project_match(dbfile)
     ]]
     local sql_with_params = string.format(sql, root)
     log.debug("\n" .. sql_with_params)
-    local result_set, error = sqlite.execute_sql(dbfile, sql_with_params)
+    local result_set, error = sqlite.execute_sql(self._dbfile, sql_with_params)
     if error and error ~= "No output" then
       log.error(error)
       return nil
@@ -194,6 +164,32 @@ local function current_buf_project_match(dbfile)
     local project_id = result_set[1].project_id
     log.debug(string.format("Project ID match; %s", project_id))
     return project_id
+  end)
+end
+
+---@param project_id integer
+function ProjectState:activate_project(project_id)
+  logger.scope("activate_project", function(logs)
+    local sql = [[
+      update project set active = 0;
+      update project set active = 1
+      where project_id = %s;
+      select
+        dir
+        , name
+      from project
+      where project_id = %s;
+    ]]
+    local sql_with_params = string.format(sql, project_id, project_id)
+    local result, error = sqlite.execute_sql(self._dbfile, sql_with_params)
+    if error and error ~= "No output" then
+      logs.error(error)
+    else
+      ---@type Project
+      local project = result[1]
+      logs.info(string.format("Swapping to Project: %s", project.name))
+      vim.cmd(string.format("cd %s", project.dir))
+    end
   end)
 end
 
@@ -236,10 +232,10 @@ function M.setup()
   vim.api.nvim_create_autocmd("BufEnter", {
     group = project_augroup,
     callback = function()
-      local match = current_buf_project_match(fullpath)
-      if match then
+      local project_id = state:buf_current_project()
+      if project_id then
         logger.debug("Attempting to activate project")
-        project_activate(fullpath, match)
+        state:activate_project(project_id)
       else
         logger.debug("No match, not project to activate")
       end
