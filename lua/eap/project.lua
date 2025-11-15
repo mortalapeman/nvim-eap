@@ -39,6 +39,8 @@ function ProjectState:init()
         , name text
         , project_id integer 
         , active integer
+        , row integer
+        , col integer
         , foreign key (project_id) references project(project_id)
       );
     ]]
@@ -58,6 +60,7 @@ end
 function ProjectState:show_info()
   local sql = "select * from project;"
   local result, _ = sqlite.execute_sql_md(self._dbfile, sql)
+  print(self._dbfile)
   print(result or "No projects")
   sql = "select * from buffer;"
   result, _ = sqlite.execute_sql_md(self._dbfile, sql)
@@ -84,6 +87,7 @@ function ProjectState:create_project()
         if name ~= nil then
           local git_root = buf_current_git_root()
           local sql = [[
+          update project set active = 0;
           insert into project (dir, name, active)
           values ('%s', '%s', 1);
         ]]
@@ -108,8 +112,8 @@ end
 
 ---@param dbfile string
 ---@return Project[] | nil
-local function inactive_projects(dbfile)
-  local sql = "select project_id, name, dir from project where active = 0;"
+local function all_projects(dbfile)
+  local sql = "select project_id, name, dir, active from project;"
   local result, error = sqlite.execute_sql(dbfile, sql)
   if error and error ~= "No output" then
     logger.error(error)
@@ -118,24 +122,58 @@ local function inactive_projects(dbfile)
   return result
 end
 
+function ProjectState:open_project_bufs(project_id)
+  local result, _ = sqlite.execute_sql(
+    self._dbfile,
+    [[
+      select 
+        name 
+        , row
+        , col
+        , active
+      from buffer 
+      where project_id = :pid
+      order by active
+    ]],
+    { pid = project_id }
+  )
+  for _, buf in pairs(result) do
+    vim.defer_fn(function()
+      vim.cmd("e " .. buf.name)
+      if buf.active ~= 0 then
+        vim.api.nvim_win_set_cursor(0, { buf.row, buf.col })
+      end
+    end, 0)
+  end
+end
+
+function ProjectState:deactivate()
+  sqlite.execute_sql(self._dbfile, "update project set active = 0")
+end
+
 function ProjectState:select_project()
   logger.scope("select_project", function(logs)
-    local all_inactive_proj = inactive_projects(self._dbfile)
-    if all_inactive_proj == nil then
+    local projects = all_projects(self._dbfile)
+    if projects == nil then
       logs.warn("No projects found")
       return
     end
 
-    vim.ui.select(all_inactive_proj, {
+    vim.ui.select(projects, {
       prompt = "Select a project",
       format_item = function(item)
-        return string.format("Name: %s >> %s", item.name, item.dir)
+        if item.active ~= 0 then
+          return string.format("Name: %s >> %s (ACTIVE)", item.name, item.dir)
+        else
+          return string.format("Name: %s >> %s", item.name, item.dir)
+        end
       end,
       ---@param choice Project
     }, function(choice)
       if choice ~= nil then
         self:activate_project(choice.project_id)
         vim.cmd("cd " .. choice.dir)
+        self:open_project_bufs(choice.project_id)
       end
     end)
   end)
@@ -167,6 +205,7 @@ function ProjectState:buf_current_project()
   end)
 end
 
+---@return integer | nil
 function ProjectState:active_project_id()
   local sql = [[
       select
@@ -177,6 +216,7 @@ function ProjectState:active_project_id()
   local result, error = sqlite.execute_sql(self._dbfile, sql)
   if error and error ~= "No output" then
     logger.error(error)
+    return nil
   else
     ---@class PartialProj1
     ---@field project_id integer
@@ -214,6 +254,7 @@ end
 ---@param name string
 function ProjectState:set_active_proj_buf(name)
   local match, _ = sqlite.execute_sql(self._dbfile, "select buffer_id from buffer where name = :name", { name = name })
+  local pid = self:active_project_id()
   if match == nil then
     sqlite.execute_sql(
       self._dbfile,
@@ -221,13 +262,18 @@ function ProjectState:set_active_proj_buf(name)
         insert into buffer (name, project_id, active)
         values (:name, :project_id, 1);
       ]],
-      { name = name, project_id = self:active_project_id() }
+      { name = name, project_id = pid }
     )
   else
     sqlite.execute_sql(
       self._dbfile,
-      "update buffer set active = 0; update buffer set active = 1 where name = :name;",
-      { name = name }
+      [[
+        update buffer set active = 0
+        where project_id = :pid;
+        update buffer set active = 1
+        where name = :name;
+      ]],
+      { name = name, pid = pid }
     )
   end
 end
@@ -235,6 +281,22 @@ end
 ---@param name string
 function ProjectState:delete_project_buffer(name)
   sqlite.execute_sql(self._dbfile, "delete from buffer where name = :name", { name = name })
+end
+
+---@param name string
+---@param row integer
+---@param col integer
+function ProjectState:save_last_cursor_pos(name, row, col)
+  sqlite.execute_sql(
+    self._dbfile,
+    [[
+    update buffer 
+    set row = :row
+        , col = :col 
+    where name = :name;
+  ]],
+    { name = name, row = row, col = col }
+  )
 end
 
 -- vim.api.nvim_buf_get_name()
@@ -270,6 +332,11 @@ function M.setup()
   end, {
     desc = "Show information about the current database state",
   })
+  vim.api.nvim_create_user_command("ProjectDeactivate", function()
+    state:deactivate()
+  end, {
+    desc = "Deactivate the current active project.",
+  })
 
   local project_augroup = vim.api.nvim_create_augroup("EapProjects", {})
 
@@ -296,6 +363,30 @@ function M.setup()
       state:delete_project_buffer(name)
     end,
   })
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    group = project_augroup,
+    callback = function()
+      local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+      local name = vim.api.nvim_buf_get_name(0)
+      state:save_last_cursor_pos(name, row, col)
+    end,
+  })
+  -- TODO: Activate Project
+  -- Setup a command that allows me to designate a startup project
+  -- and have it startup on vim enter. Also a command to deactivate the
+  -- startup project
+
+  -- TODO: List All Functions Command in file in telescope
+  --
+  -- vim.api.nvim_create_autocmd("VimEnter", {
+  --   group = project_augroup,
+  --   callback = function()
+  --     local pid = state:active_project_id()
+  --     if pid then
+  --       state:open_project_bufs(pid)
+  --     end
+  --   end,
+  -- })
 end
 
 return M
