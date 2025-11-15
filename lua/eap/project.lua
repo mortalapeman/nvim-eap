@@ -35,10 +35,10 @@ function ProjectState:init()
         , active integer
       );
       create table buffer (
-        id integer primary key autoincrement
-        , filepath text
-        , is_shown integer
+        buffer_id integer primary key autoincrement
+        , name text
         , project_id integer 
+        , active integer
         , foreign key (project_id) references project(project_id)
       );
     ]]
@@ -167,6 +167,24 @@ function ProjectState:buf_current_project()
   end)
 end
 
+function ProjectState:active_project_id()
+  local sql = [[
+      select
+        project_id
+      from project
+      where active = 1;
+    ]]
+  local result, error = sqlite.execute_sql(self._dbfile, sql)
+  if error and error ~= "No output" then
+    logger.error(error)
+  else
+    ---@class PartialProj1
+    ---@field project_id integer
+    local project = result[1]
+    return project.project_id
+  end
+end
+
 ---@param project_id integer
 function ProjectState:activate_project(project_id)
   logger.scope("activate_project", function(logs)
@@ -191,6 +209,32 @@ function ProjectState:activate_project(project_id)
       vim.cmd(string.format("cd %s", project.dir))
     end
   end)
+end
+
+---@param name string
+function ProjectState:set_active_proj_buf(name)
+  local match, _ = sqlite.execute_sql(self._dbfile, "select buffer_id from buffer where name = :name", { name = name })
+  if match == nil then
+    sqlite.execute_sql(
+      self._dbfile,
+      [[
+        insert into buffer (name, project_id, active)
+        values (:name, :project_id, 1);
+      ]],
+      { name = name, project_id = self:active_project_id() }
+    )
+  else
+    sqlite.execute_sql(
+      self._dbfile,
+      "update buffer set active = 0; update buffer set active = 1 where name = :name;",
+      { name = name }
+    )
+  end
+end
+
+---@param name string
+function ProjectState:delete_project_buffer(name)
+  sqlite.execute_sql(self._dbfile, "delete from buffer where name = :name", { name = name })
 end
 
 -- vim.api.nvim_buf_get_name()
@@ -236,9 +280,20 @@ function M.setup()
       if project_id then
         logger.debug("Attempting to activate project")
         state:activate_project(project_id)
+        local name = vim.fn.expand("<afile>:p")
+        if vim.uv.fs_stat(name) then
+          state:set_active_proj_buf(name)
+        end
       else
         logger.debug("No match, not project to activate")
       end
+    end,
+  })
+  vim.api.nvim_create_autocmd({ "BufDelete" }, {
+    group = project_augroup,
+    callback = function()
+      local name = vim.fn.expand("<afile>:p")
+      state:delete_project_buffer(name)
     end,
   })
 end

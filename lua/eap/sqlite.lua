@@ -2,15 +2,49 @@
 --- @field filename string | nil Name of the database file
 --- @field pragma_lines string[] | nil Pragma lines to add before execution of any sql code.
 
-local debug = require("eap.debug")
 local array = require("eap.array")
 
 local M = {}
 
+---@param value nil | string | boolean | integer
+local function encode(value)
+  local value_type = type(value)
+  if value_type == "nil" then
+    return "NULL"
+  elseif value_type == "boolean" then
+    if value then
+      return "1"
+    else
+      return "0"
+    end
+  elseif value_type == "number" then
+    return tostring(value)
+  elseif value_type == "string" then
+    return string.format("'%s'", value)
+  end
+  error("Unsupported value type: " .. value_type)
+end
+
+---@param sql string
+---@param params {[string]: any}
+local function inject_params(sql, params)
+  local result = sql
+  for k, v in pairs(params) do
+    local pattern = ":" .. k
+    local repl = encode(v)
+    result = string.gsub(result, pattern, repl)
+  end
+  return result
+end
+
 ---@param dbfile string Use empty string for temporary database or pass the file name
 ---@param sql string Array of sql expressions to evaluate.
+---@param params? {[string]: any}
 ---@return any, string | nil # A table row objects from the execution of SQL
-local function execute_sql(dbfile, sql)
+local function execute_sql(dbfile, sql, params)
+  if params then
+    sql = inject_params(sql, params)
+  end
   local sql_split = vim.fn.split(sql, "\n")
   local temp = vim.fn.tempname()
   vim.fn.writefile(sql_split, temp)

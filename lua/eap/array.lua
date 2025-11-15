@@ -1,5 +1,3 @@
-local debug = require("eap.debug")
-
 local M = {
   ---@param a1 any[] First array.
   ---@param a2 any[] Second array.
@@ -13,7 +11,5 @@ local M = {
     return result
   end,
 }
-
-debug.print(M.concat({ 1, 2, 3 }, { 1, 2, 3 }))
 
 return M
