@@ -62,14 +62,17 @@ function ProjectState:show_info()
   print(result or "No buffers")
 end
 --- Helper function to get the git root directory of the current buffer.
----@return string # The git root directory of the current buffer
+---@return string | nil # The git root directory of the current buffer
 local function buf_current_git_root()
   local bufdir = vim.fn.expand("%:p:h")
-  local old_cwd = vim.uv.cwd()
-  vim.cmd("lcd " .. bufdir)
-  local root = vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
-  vim.cmd("lcd " .. old_cwd)
-  return root
+  if vim.uv.fs_stat(bufdir) then
+    local old_cwd = vim.uv.cwd()
+    vim.cmd("lcd " .. bufdir)
+    local root = vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
+    vim.cmd("lcd " .. old_cwd)
+    return root
+  end
+  return nil
 end
 --- Takes input from the user to create a project with the provided name and
 --- uses the git root of the current buffer.
@@ -83,11 +86,15 @@ function ProjectState:create_project()
       function(name)
         if name ~= nil then
           local git_root = buf_current_git_root()
+          if not git_root then
+            return
+          end
+
           local sql = [[
-          update project set active = 0;
-          insert into project (dir, name, active)
-          values ('%s', '%s', 1);
-        ]]
+            update project set active = 0;
+            insert into project (dir, name, active)
+            values ('%s', '%s', 1);
+          ]]
           local sql_with_params = string.format(sql, git_root, name)
           local _, error = sqlite.execute_sql(self._dbfile, sql_with_params)
           if error and error ~= "No output" then
