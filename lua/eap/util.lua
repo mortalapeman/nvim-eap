@@ -1,14 +1,11 @@
 local M = {}
+
 function M.pack(...)
   local t = { ... }
   return t
 end
 
-function M.buf_get_current_number()
-  return vim.fn.bufadd(vim.fn.expand("%"))
-end
-
-M.table_find_key = function(tbl, value)
+function M.table_find_key(tbl, value)
   for k, v in pairs(tbl) do
     if value == v then
       return k, nil
@@ -17,8 +14,8 @@ M.table_find_key = function(tbl, value)
   return nil, "Key not found"
 end
 
-M.wipe_other_buffers = function()
-  local current_buf_num = vim.fn.bufadd(vim.fn.expand("%"))
+function M.wipe_other_buffers()
+  local current_buf_num = vim.api.nvim_get_current_buf()
   local buffer_list = vim.api.nvim_list_bufs()
   local current_key = M.table_find_key(buffer_list, current_buf_num)
   table.remove(buffer_list, current_key)

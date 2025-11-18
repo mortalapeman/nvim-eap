@@ -1,4 +1,5 @@
 local sqlite = require("eap.sqlite")
+local pack = require("eap.util").pack
 
 local M = {}
 
@@ -143,11 +144,6 @@ function M.get_logger(namespace)
         writer.write(level, ns, message)
       end
     end
-  end
-
-  local function pack(...)
-    local t = { ... }
-    return t
   end
 
   local logger = {
