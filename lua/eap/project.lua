@@ -5,14 +5,8 @@ local M = {}
 
 local logger = logging.get_logger("eap.project")
 
-local function find_git_root()
-  return vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
-end
-
 ---@class ProjectState
 ---@field _dbfile string
----@field new fun(dbfile: string): ProjectState
----@field init fun(self: ProjectState)
 local ProjectState = {}
 
 ---@param dbfile string
@@ -25,6 +19,7 @@ function ProjectState.new(dbfile)
   return self
 end
 
+--- Initializes the database used to store project information.
 function ProjectState:init()
   if not vim.uv.fs_stat(self._dbfile) or not sqlite.table_exists(self._dbfile, "project") then
     local sql = [[
@@ -50,13 +45,13 @@ function ProjectState:init()
     end
   end
 end
-
+--- Resets the database used to store project information.
 function ProjectState:reset()
   if vim.uv.fs_stat(self._dbfile) then
     vim.fn.delete(self._dbfile)
   end
 end
-
+--- Prints database data to vim messages.
 function ProjectState:show_info()
   local sql = "select * from project;"
   local result, _ = sqlite.execute_sql_md(self._dbfile, sql)
@@ -66,16 +61,18 @@ function ProjectState:show_info()
   result, _ = sqlite.execute_sql_md(self._dbfile, sql)
   print(result or "No buffers")
 end
-
+--- Helper function to get the git root directory of the current buffer.
+---@return string # The git root directory of the current buffer
 local function buf_current_git_root()
   local bufdir = vim.fn.expand("%:p:h")
   local old_cwd = vim.uv.cwd()
   vim.cmd("lcd " .. bufdir)
-  local root = find_git_root()
+  local root = vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
   vim.cmd("lcd " .. old_cwd)
   return root
 end
-
+--- Takes input from the user to create a project with the provided name and
+--- uses the git root of the current buffer.
 function ProjectState:create_project()
   logger.scope("create_project", function(logs)
     vim.ui.input(
@@ -122,6 +119,7 @@ local function all_projects(dbfile)
   return result
 end
 
+---@param project_id integer
 function ProjectState:open_project_bufs(project_id)
   local result, _ = sqlite.execute_sql(
     self._dbfile,
@@ -137,20 +135,26 @@ function ProjectState:open_project_bufs(project_id)
     ]],
     { pid = project_id }
   )
-  for _, buf in pairs(result) do
-    vim.defer_fn(function()
-      vim.cmd("e " .. buf.name)
-      if buf.active ~= 0 then
-        vim.api.nvim_win_set_cursor(0, { buf.row, buf.col })
-      end
-    end, 0)
+  if result then
+    for _, buf in pairs(result) do
+      vim.defer_fn(function()
+        vim.cmd("e " .. buf.name)
+        if buf.active ~= 0 then
+          if buf.row == nil or buf.col == nil then
+            vim.api.nvim_win_set_cursor(0, { 1, 1 })
+          else
+            vim.api.nvim_win_set_cursor(0, { buf.row, buf.col })
+          end
+        end
+      end, 0)
+    end
   end
 end
-
+--- Sets the active flag of the current project to 0.
 function ProjectState:deactivate()
   sqlite.execute_sql(self._dbfile, "update project set active = 0")
 end
-
+--- Opens the selection UI for picking a project to activate.
 function ProjectState:select_project()
   logger.scope("select_project", function(logs)
     local projects = all_projects(self._dbfile)
@@ -278,7 +282,7 @@ function ProjectState:set_active_proj_buf(name)
   end
 end
 
----@param name string
+---@param name string Name of the buffer to delete.
 function ProjectState:delete_project_buffer(name)
   sqlite.execute_sql(self._dbfile, "delete from buffer where name = :name", { name = name })
 end
@@ -298,10 +302,6 @@ function ProjectState:save_last_cursor_pos(name, row, col)
     { name = name, row = row, col = col }
   )
 end
-
--- vim.api.nvim_buf_get_name()
--- vim.fn.getbufinfo()
--- TODO: implement this
 
 function M.setup()
   local fullpath = vim.fs.joinpath(vim.fn.stdpath("data"), "eap-projects.db")
@@ -375,18 +375,6 @@ function M.setup()
   -- Setup a command that allows me to designate a startup project
   -- and have it startup on vim enter. Also a command to deactivate the
   -- startup project
-
-  -- TODO: List All Functions Command in file in telescope
-  --
-  -- vim.api.nvim_create_autocmd("VimEnter", {
-  --   group = project_augroup,
-  --   callback = function()
-  --     local pid = state:active_project_id()
-  --     if pid then
-  --       state:open_project_bufs(pid)
-  --     end
-  --   end,
-  -- })
 end
 
 return M

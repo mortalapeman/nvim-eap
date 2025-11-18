@@ -1,6 +1,10 @@
 local M = {}
+function M.pack(...)
+  local t = { ... }
+  return t
+end
 
-M.buf_get_current_number = function()
+function M.buf_get_current_number()
   return vim.fn.bufadd(vim.fn.expand("%"))
 end
 
