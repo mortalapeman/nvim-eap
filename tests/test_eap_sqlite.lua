@@ -45,4 +45,13 @@ T["sqlite.table_exists()"]["returns true if a table exists"] = function()
   eq(true, sqlite.table_exists(filename, "foobar"))
 end
 
+T["sqlite.table_exists()"]["returns false if a table does not exist"] = function()
+  local filename = vim.fn.tempname()
+  MiniTest.finally(function()
+    vim.fn.delete(filename)
+  end)
+  sqlite.execute_sql(filename, "create table foobar (id integer, value text);")
+  eq(false, sqlite.table_exists(filename, "blergs"))
+end
+
 return T
