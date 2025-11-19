@@ -21,5 +21,26 @@ T["util.table_find_key()"]["works"] = function()
   local result = table_find_key(tbl, 2)
   eq("foobar", result)
 end
+local child = MiniTest.new_child_neovim()
+
+T["util.wipe_other_buffers()"] = new_set({
+  hooks = {
+    pre_case = function()
+      child.restart({ "-u", "scripts/minimal_init.lua" })
+      child.lua([[M = require('eap.util')]])
+    end,
+    post_once = child.stop,
+  },
+})
+
+T["util.wipe_other_buffers()"]["works"] = function()
+  child.fn.bufadd("foo")
+  child.fn.bufadd("bar")
+  child.fn.bufadd("blergs")
+  child.cmd([[b bar]])
+  child.lua([[M.wipe_other_buffers()]])
+  local bufs = child.api.nvim_list_bufs()
+  eq(1, #bufs)
+end
 
 return T
