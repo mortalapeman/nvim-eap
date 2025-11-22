@@ -79,7 +79,7 @@ end
 ---@return any, string | nil # A table of row objects from the execution of
 ---provided SQL statement.
 function M.execute_sql(dbfile, sql, params)
-  local result, error = execute_sql_with_cmd(dbfile, "sqlite -json", sql, params, {})
+  local result, error = execute_sql_with_cmd(dbfile, "sqlite3 -json", sql, params, {})
   if result ~= nil then
     return vim.json.decode(result), nil
   end
@@ -92,7 +92,7 @@ end
 ---@return string | nil, string | nil # A markdown representation of the query
 ---and an error string.
 function M.execute_sql_md(dbfile, sql, params)
-  return execute_sql_with_cmd(dbfile, "sqlite -markdown", sql, params, {})
+  return execute_sql_with_cmd(dbfile, "sqlite3 -markdown", sql, params, {})
 end
 
 function M.table_exists(dbfile, tblname)
