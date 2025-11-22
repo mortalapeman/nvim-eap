@@ -3,6 +3,13 @@ require("eap.project").setup()
 
 local util = require("eap.util")
 
+vim.api.nvim_create_user_command("Scratch", function()
+  local buf = vim.api.nvim_create_buf(true, true)
+  vim.api.nvim_win_set_buf(0, buf)
+end, {
+  desc = "Delete the current file and buffer.",
+})
+
 -- User Commands
 vim.api.nvim_create_user_command("FileDelete", function()
   vim.cmd([[
