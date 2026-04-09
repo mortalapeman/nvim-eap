@@ -20,6 +20,19 @@ end, {
   desc = "Delete the current file and buffer.",
 })
 
+vim.api.nvim_create_user_command("ChangeCwdToFileDir", function()
+  local filename = vim.api.nvim_buf_get_name(0)
+  if filename then
+    local dir_path = vim.fn.fnamemodify(filename, ":h")
+    vim.cmd("cd " .. dir_path)
+    vim.notify("Changed CWD to: " .. dir_path, vim.log.levels.INFO)
+  else
+    vim.notify("Could not determine current file path.", vim.log.levels.ERROR)
+  end
+end, {
+  desc = "Change CWD to the current file's directory",
+})
+
 vim.api.nvim_create_user_command("BufferCloseOthers", function()
   util.wipe_other_buffers()
 end, {

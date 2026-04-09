@@ -147,11 +147,13 @@ function ProjectState:open_project_bufs(project_id)
       vim.defer_fn(function()
         vim.cmd("e " .. buf.name)
         if buf.active ~= 0 then
-          if buf.row == nil or buf.col == nil then
-            vim.api.nvim_win_set_cursor(0, { 1, 1 })
-          else
-            vim.api.nvim_win_set_cursor(0, { buf.row, buf.col })
-          end
+          vim.defer_fn(function()
+            if buf.row == vim.NIL or buf.row == nil or buf.col == vim.NIL or buf.col == nil then
+              vim.api.nvim_win_set_cursor(0, { 1, 1 })
+            else
+              vim.api.nvim_win_set_cursor(0, { buf.row, buf.col })
+            end
+          end, 0)
         end
       end, 0)
     end

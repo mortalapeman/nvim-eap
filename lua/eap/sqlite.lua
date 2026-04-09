@@ -28,7 +28,7 @@ local function encode(value)
 end
 
 local function quote(value)
-  return vim.fn.join({ '"', value, '"' })
+  return vim.fn.join({ '"', value, '"' }, "")
 end
 
 --- Replaces all the named params in the given sql string with the values in the
