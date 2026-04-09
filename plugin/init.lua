@@ -20,10 +20,14 @@ end, {
   desc = "Delete the current file and buffer.",
 })
 
+local cwd_stack = {}
+
 vim.api.nvim_create_user_command("ChangeCwdToFileDir", function()
+  local cwd = vim.fn.getcwd()
   local filename = vim.api.nvim_buf_get_name(0)
   if filename then
     local dir_path = vim.fn.fnamemodify(filename, ":h")
+    table.insert(cwd_stack, cwd)
     vim.cmd("cd " .. dir_path)
     vim.notify("Changed CWD to: " .. dir_path, vim.log.levels.INFO)
   else
@@ -31,6 +35,18 @@ vim.api.nvim_create_user_command("ChangeCwdToFileDir", function()
   end
 end, {
   desc = "Change CWD to the current file's directory",
+})
+
+vim.api.nvim_create_user_command("ChangeCwdBack", function()
+  if #cwd_stack > 0 then
+    local previous_dir = table.remove(cwd_stack, #cwd_stack)
+    vim.cmd("cd " .. previous_dir)
+    vim.notify("Changed CWD back to: " .. previous_dir, vim.log.levels.INFO)
+  else
+    vim.notify("CWD stack is empty.", vim.log.levels.WARN)
+  end
+end, {
+  desc = "Go back to the previous CWD",
 })
 
 vim.api.nvim_create_user_command("BufferCloseOthers", function()

@@ -3,11 +3,13 @@ local M = {}
 local scratch_buffer_name = "LuaDebugScratch"
 
 local function scratch_buffer()
-  local buf_num = vim.fn.bufadd(scratch_buffer_name)
-  local opt = vim.bo[buf_num]
-  opt.bufhidden = "hide"
-  opt.swapfile = false
-  opt.buftype = "nofile"
+  local buf_num = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_set_option_value("bufhidden", "hide", { buf = buf_num })
+
+  if scratch_buffer_name then
+    vim.api.nvim_buf_set_name(buf_num, scratch_buffer_name)
+  end
+
   return buf_num
 end
 
@@ -20,7 +22,7 @@ local function write_to_buffer(text)
 end
 
 ---@param item any And value to render to text with vim.inspect
-M.print = function(item)
+function M.print(item)
   write_to_buffer(">>")
   write_to_buffer(vim.inspect(item))
   local buf_num = scratch_buffer()
@@ -32,7 +34,7 @@ end
 
 local debug_state = {}
 
-M.set = function(name, item)
+function M.set(name, item)
   if debug_state[name] == nil then
     debug_state[name] = {}
   end
@@ -40,7 +42,7 @@ M.set = function(name, item)
   table.insert(store, item)
 end
 
-M.clear = function()
+function M.clear()
   for k, _ in pairs(debug_state) do
     debug_state[k] = nil
   end
@@ -49,7 +51,7 @@ M.clear = function()
   vim.api.nvim_buf_set_lines(buf_num, 0, index, false, {})
 end
 
-M.get = function(name)
+function M.get(name)
   local store = debug_state[name]
   if store == nil then
     return nil
