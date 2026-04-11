@@ -61,7 +61,7 @@ end, {
 vim.api.nvim_create_autocmd("FileType", {
   pattern = { "lua" },
   desc = "Setup keymaps and other config specifically for files",
-  group = vim.api.nvim_create_augroup("eap-lua-files", { clear = true }),
+  group = vim.api.nvim_create_augroup("eap-ft-lua", { clear = true }),
   callback = function()
     vim.bo.expandtab = true
     vim.bo.shiftwidth = 2
