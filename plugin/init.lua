@@ -60,7 +60,7 @@ end, {
 -- Auto Commands
 vim.api.nvim_create_autocmd("FileType", {
   pattern = { "lua" },
-  desc = "Setup keymaps and other config specifically for files",
+  desc = "Setup keymaps and other config specifically for lua files",
   group = vim.api.nvim_create_augroup("eap-ft-lua", { clear = true }),
   callback = function()
     vim.bo.expandtab = true
@@ -76,5 +76,16 @@ vim.api.nvim_create_autocmd("FileType", {
       buffer = true,
       desc = "Save the current file and execute via luafile",
     })
+  end,
+})
+
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = { "json" },
+  desc = "Setup keymaps and other config specifically for json files",
+  group = vim.api.nvim_create_augroup("eap-ft-json", { clear = true }),
+  callback = function()
+    vim.bo.expandtab = true
+    vim.bo.shiftwidth = 2
+    vim.bo.tabstop = 2
   end,
 })

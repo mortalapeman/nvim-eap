@@ -108,7 +108,8 @@ local function execute_current_file(config)
   local lines = vim.api.nvim_buf_get_lines(bufid, 0, -1, false)
   local combined = array.concat(config.pragma_lines, lines)
   vim.fn.writefile(combined, tmpfile)
-  local cmd = string.format("cat %s | sqlite3 %s", tmpfile, config.filename)
+  local dbfile_arg = config.filename or ""
+  local cmd = string.format("cat %s | sqlite3 %s", tmpfile, dbfile_arg)
   vim.fn.system(cmd)
   vim.fn.delete(tmpfile)
 end
@@ -117,7 +118,7 @@ end
 function M.setup(config)
   vim.api.nvim_create_autocmd("FileType", {
     pattern = { "sql" },
-    group = vim.api.nvim_create_augroup("eap-filetype-sql", {}),
+    group = vim.api.nvim_create_augroup("eap-ft-sql", {}),
     desc = "Configure the current buffer with SQLite specific commands.",
     callback = function()
       local bufid = vim.api.nvim_get_current_buf()
