@@ -1,5 +1,3 @@
-local debug = require("eap.debug")
-
 local M = {}
 
 function M.yank_current_line_as_loc()

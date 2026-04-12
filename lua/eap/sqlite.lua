@@ -115,12 +115,14 @@ local function execute_current_file(config)
   local tmpfile = vim.fn.tempname()
   local bufid = vim.api.nvim_get_current_buf()
   local lines = vim.api.nvim_buf_get_lines(bufid, 0, -1, false)
-  require("eap.debug").print(lines)
   local combined = array.concat(config.pragma_lines or {}, lines)
   vim.fn.writefile(combined, tmpfile)
   local dbfile_arg = config.filename or ""
-  local cmd = string.format("cat %s | sqlite3 %s", tmpfile, dbfile_arg)
-  vim.fn.system(cmd)
+  local cmd = string.format("cat %s | sqlite3 -markdown %s", tmpfile, dbfile_arg)
+  local output = vim.fn.system(cmd)
+  if output ~= "" then
+    vim.notify("SQLite Output:\n" .. output, vim.log.levels.INFO)
+  end
   vim.fn.delete(tmpfile)
 end
 

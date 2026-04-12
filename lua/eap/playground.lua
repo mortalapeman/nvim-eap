@@ -1,7 +1,5 @@
 local M = {}
 
-local debug = require("eap.debug")
-
 local namespace = vim.api.nvim_create_namespace("test")
 local scratch_buffer_name = "PlaygroundScratch"
 
