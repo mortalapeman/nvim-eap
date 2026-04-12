@@ -3,23 +3,12 @@ local M = {}
 local scratch_buffer_name = "LuaDebugScratch"
 
 local function scratch_buffer()
-  local buf_nums = vim.api.nvim_list_bufs() or {}
-  local scratch_buf_num = nil
-  for _, buf_num in pairs(buf_nums) do
-    local name = vim.api.nvim_buf_get_name(buf_num)
-    if string.find(scratch_buffer_name, name) ~= nil then
-      scratch_buf_num = buf_num
-      break
-    end
-  end
-  if scratch_buf_num == nil then
-    scratch_buf_num = scratch_buf_num or vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_set_option_value("bufhidden", "hide", { buf = scratch_buf_num })
-    vim.api.nvim_buf_set_name(scratch_buf_num, scratch_buffer_name)
-    return scratch_buf_num
-  end
-
-  return scratch_buf_num
+  local buf_num = vim.fn.bufadd(scratch_buffer_name)
+  local opt = vim.bo[buf_num]
+  opt.bufhidden = "hide"
+  opt.swapfile = false
+  opt.buftype = "nofile"
+  return buf_num
 end
 
 ---@param text string Text to write to the scratch buffer

@@ -1,10 +1,19 @@
 local array = require("eap.array")
 
-local M = {}
-
 --- @class SqliteConfig
 --- @field filename string | nil Name of the database file
 --- @field pragma_lines string[] | nil Pragma lines to add before execution of any sql code.
+
+--- @class SqliteModule
+--- @field private _config SqliteConfig
+
+--- @class SqliteModule
+local M = {
+  _config = {
+    filename = nil,
+    pragma_lines = nil,
+  },
+}
 
 --- Simple function to encode Lua values to SQL strings suitable for injection
 --- into a SQL query.
@@ -106,7 +115,8 @@ local function execute_current_file(config)
   local tmpfile = vim.fn.tempname()
   local bufid = vim.api.nvim_get_current_buf()
   local lines = vim.api.nvim_buf_get_lines(bufid, 0, -1, false)
-  local combined = array.concat(config.pragma_lines, lines)
+  require("eap.debug").print(lines)
+  local combined = array.concat(config.pragma_lines or {}, lines)
   vim.fn.writefile(combined, tmpfile)
   local dbfile_arg = config.filename or ""
   local cmd = string.format("cat %s | sqlite3 %s", tmpfile, dbfile_arg)
@@ -114,8 +124,27 @@ local function execute_current_file(config)
   vim.fn.delete(tmpfile)
 end
 
+---@param filename string # The path to a sqlite file
+function M.set_filename(filename)
+  M._config.filename = filename
+end
+
 ---@param config SqliteConfig
 function M.setup(config)
+  M._config.filename = config.filename
+  M._config.pragma_lines = config.pragma_lines
+
+  vim.api.nvim_create_user_command("SqlSetFilename", function()
+    local name = vim.fn.input({
+      prompt = "Filename: ",
+    })
+    if #name > 0 then
+      M.set_filename(name)
+    end
+  end, {
+    desc = "Set the file name to use when running SQLite commands.",
+  })
+
   vim.api.nvim_create_autocmd("FileType", {
     pattern = { "sql" },
     group = vim.api.nvim_create_augroup("eap-ft-sql", {}),
@@ -123,20 +152,12 @@ function M.setup(config)
     callback = function()
       local bufid = vim.api.nvim_get_current_buf()
       vim.api.nvim_buf_create_user_command(bufid, "SqlExecuteFile", function()
-        execute_current_file(config)
+        execute_current_file(M._config)
       end, {
         desc = "Execute the current file against the configured SQLite database.",
       })
     end,
   })
 end
-
--- M.setup({
---   filename = "dbfile.db",
---   pragma_lines = {
---     "PRAGMA foreign_keys = ON;",
---     "PRAGMA journal_mode = WAL;",
---   },
--- })
 
 return M
