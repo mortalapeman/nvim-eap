@@ -78,3 +78,26 @@ vim.api.nvim_create_autocmd("FileType", {
     })
   end,
 })
+
+vim.api.nvim_create_user_command("YankCurrentLine", function()
+  vim.cmd([[
+  let @@=expand('%:~:.') .. ":" .. line(".") .. ":" .. col(".")
+  ]])
+end, { desc = "Yanks the current relative file path, line and col numer int the defautl register." })
+
+vim.keymap.set("n", "<leader>yy", ":YankCurrentLine<CR>", {
+  desc = "Yanks the current relative file path, line and col numer int the defautl register.",
+})
+
+local function GotoFileLineCol()
+  local loc = vim.fn.expand("<cWORD>")
+  local _, line, col = unpack(vim.fn.split(loc, ":"))
+  vim.cmd([[normal! gf]])
+  if line ~= nil and col ~= nil then
+    vim.api.nvim_win_set_cursor(0, { tonumber(line), tonumber(col) })
+  end
+end
+
+vim.keymap.set("n", "<leader>gf", GotoFileLineCol, {
+  desc = "Go to file location under cursor.",
+})
