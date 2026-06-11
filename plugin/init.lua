@@ -11,7 +11,7 @@ vim.api.nvim_create_user_command("Scratch", function()
   local buf = vim.api.nvim_create_buf(true, true)
   vim.api.nvim_win_set_buf(0, buf)
 end, {
-  desc = "Delete the current file and buffer.",
+  desc = "Create a scratch buffer.",
 })
 
 vim.api.nvim_create_user_command("FileDelete", function()
@@ -63,7 +63,7 @@ vim.api.nvim_create_autocmd("FileType", {
   pattern = { "lua" },
   desc = "Setup keymaps and other config specifically for lua files",
   group = vim.api.nvim_create_augroup("eap-ft-lua", { clear = true }),
-  callback = function()
+  callback = function(ev)
     vim.bo.expandtab = true
     vim.bo.shiftwidth = 2
     vim.bo.tabstop = 2
@@ -74,7 +74,7 @@ vim.api.nvim_create_autocmd("FileType", {
         luafile %
       ]])
     end, {
-      buffer = true,
+      buffer = ev.buf,
       desc = "Save the current file and execute via luafile",
     })
   end,
