@@ -26,7 +26,7 @@ local live_grep_glob = function(opts)
     -- If there is a second piece, treat it as a glob filter
     if pieces[2] then
       table.insert(args, "-g")
-      table.insert(args, pieces[2])
+      table.insert(args, "*\\." .. pieces[2])
     end
 
     return args
@@ -44,7 +44,7 @@ end
 
 function M.setup()
   -- Create a keymap to call it
-  vim.keymap.set("n", "<leader>fg", live_grep_glob, { desc = "Fuzzy Grep with Glob" })
+  vim.keymap.set("n", "<leader>sl", live_grep_glob, { desc = "Fuzzy Grep with Glob" })
 end
 
 return M
