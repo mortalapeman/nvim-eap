@@ -8,18 +8,16 @@ require("eap.telescope").setup()
 local util = require("eap.util")
 
 -- User Commands
-vim.api.nvim_create_user_command("Scratch", function()
-  local buf = vim.api.nvim_create_buf(true, true)
-  vim.api.nvim_win_set_buf(0, buf)
-end, {
+vim.api.nvim_create_user_command("Scratch", util.scratch_buffer, {
   desc = "Create a scratch buffer.",
 })
 
 vim.api.nvim_create_user_command("FileDelete", function()
-  vim.cmd([[
-    call delete(expand('%'))
-    bd!
-  ]])
+  local path = vim.fn.expand("%")
+  if path ~= "" then
+    vim.fn.delete(path)
+    vim.api.nvim_buf_delete(0, { force = true })
+  end
 end, {
   desc = "Delete the current file and buffer.",
 })
@@ -53,19 +51,15 @@ end, {
   desc = "Go back to the previous CWD",
 })
 
-vim.api.nvim_create_user_command("BufferCloseOthers", function()
-  util.wipe_other_buffers()
-end, {
+vim.api.nvim_create_user_command("BufferCloseOthers", util.wipe_other_buffers, {
   desc = "Close all buffers minus current",
 })
 
-vim.api.nvim_create_user_command("YankCurrentLine", function()
-  vim.cmd([[
-    let @@=expand('%:~:.') .. ":" .. line(".") .. ":" .. col(".")
-  ]])
-end, { desc = "Yanks the current relative file path, line and col numer int the defautl register." })
+local function YankCurrentLine()
+  vim.fn.setreg("@", vim.fn.expand("%:~:.") .. ":" .. vim.fn.line(".") .. ":" .. vim.fn.col("."))
+end
 
-vim.keymap.set("n", "<leader>yy", ":YankCurrentLine<CR>", {
+vim.keymap.set("n", "<leader>yy", YankCurrentLine, {
   desc = "Yanks the current relative file path, line and col numer int the defautl register.",
 })
 
