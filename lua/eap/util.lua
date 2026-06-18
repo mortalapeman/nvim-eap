@@ -50,4 +50,12 @@ function M.scratch_buffer()
   return buf
 end
 
+function M.delete_current_file()
+  local path = vim.fn.expand("%")
+  if path ~= "" then
+    vim.fn.delete(path)
+    vim.api.nvim_buf_delete(0, { force = true })
+  end
+end
+
 return M

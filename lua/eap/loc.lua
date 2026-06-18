@@ -4,7 +4,7 @@ function M.yank_current_line_as_loc()
   local bufname = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":~")
   local row, col = unpack(vim.api.nvim_win_get_cursor(0))
   local loc = vim.fn.join({ bufname, row, col }, ":")
-  vim.fn.setreg("", loc)
+  vim.fn.setreg("@", loc)
 end
 
 function M.find_locs()
@@ -18,6 +18,15 @@ function M.find_locs()
   end
 
   return matches
+end
+
+function M.go_to_file_loc()
+  local loc = vim.fn.expand("<cWORD>")
+  local _, line, col = unpack(vim.fn.split(loc, ":"))
+  vim.cmd([[normal! gf]])
+  if line ~= nil and col ~= nil then
+    vim.api.nvim_win_set_cursor(0, { tonumber(line), tonumber(col) })
+  end
 end
 
 -- asdf/ere:1:2
