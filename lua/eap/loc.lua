@@ -29,6 +29,34 @@ function M.go_to_file_loc()
   end
 end
 
+-- local function run(opts)
+--   local pickers = require("telescope.pickers")
+--   local finders = require("telescope.finders")
+--   local sorters = require("telescope.sorters")
+--   local actions = require("telescope.actions")
+--   local action_state = require("telescope.actions.state")
+--   opts = opts or {}
+--   pickers
+--     .new(opts, {
+--       prompt_title = "colors",
+--       finder = finders.new_table({
+--         results = { "A", "B", "C" },
+--       }),
+--       sorter = sorters.get_generic_fuzzy_sorter(opts),
+--       attach_mappings = function(prompt_bufnr, map)
+--         actions.select_default:replace(function()
+--           actions.close(prompt_bufnr)
+--           local selection = action_state.get_selected_entry()
+--           vim.api.nvim_put({ selection[1] }, "", false, true)
+--         end)
+--         return true
+--       end,
+--     })
+--     :find()
+-- end
+--
+-- run()
+
 -- asdf/ere:1:2
 -- debug.print(M.find_locs())
 
