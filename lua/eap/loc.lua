@@ -11,8 +11,7 @@ function M.find_locs()
   local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
   local matches = {}
   for _, l in ipairs(lines) do
-    local match = string.match(l, "%S+:%d+:%d+")
-    if match then
+    for match in string.gmatch(l, "%S+:%d+:%d+") do
       table.insert(matches, match)
     end
   end
