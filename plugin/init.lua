@@ -1,8 +1,8 @@
 require("eap.logging").setup()
 require("eap.project").setup()
-require("eap.telescope").setup()
 require("eap.lsp").setup()
 require("eap.sqlite").setup({})
+require("eap.docker").setup()
 require("eap.telescope").setup()
 
 local util = require("eap.util")
