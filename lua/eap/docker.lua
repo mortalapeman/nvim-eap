@@ -1,55 +1,138 @@
 local M = {}
 
-local IMAGE = "build-test:latest"
-local CONTAINER_NAME = "build-test"
+local DOCKER_SOCKET = "/var/run/docker.sock"
 
---- Returns true if the given filename looks like a Dockerfile.
-local function is_dockerfile(filename)
-  return filename == "Dockerfile" or filename:match("^Dockerfile%.") ~= nil
-end
+local function run()
+  local width = math.floor(vim.o.columns * 0.8)
+  local height = math.floor(vim.o.lines * 0.8)
+  local col = (vim.o.columns - width) / 2
+  local row = (vim.o.lines - height) / 2
+  local buf = vim.api.nvim_create_buf(true, true)
+  vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    row = row,
+    col = col,
+    height = height,
+    width = width,
+    border = "rounded",
+    style = "minimal",
+  })
 
---- Build the Dockerfile in the current buffer and run it interactively.
-function M.run_build()
-  local buf = vim.api.nvim_get_current_buf()
-  local path = vim.api.nvim_buf_get_name(buf)
-  local filename = vim.fn.fnamemodify(path, ":t")
+  local ps_out = vim.fn.system([[docker ps --format="{{json .}}"]])
 
-  if not is_dockerfile(filename) then
-    vim.notify("DockerRunBuild can only be used from a Dockerfile buffer", vim.log.levels.ERROR)
+  if ps_out == nil then
     return
   end
 
-  -- Save the buffer before building.
-  vim.cmd("write")
+  local split = vim.fn.split(ps_out, "\n", false)
+  local concat = "[" .. table.concat(split, ",") .. "]"
+  local containers = vim.json.decode(concat)
 
-  local context_dir = vim.fn.fnamemodify(path, ":h")
+  local names = {}
+  for _, item in ipairs(containers) do
+    table.insert(names, item.Names)
+  end
 
-  local cmd = "docker build -t %s -f %s %s"
-  local build_cmd = string.format(cmd, IMAGE, vim.fn.shellescape(path), vim.fn.shellescape(context_dir))
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, names)
+end
 
-  -- Open a horizontal split and run the build in a terminal.
-  vim.cmd("split")
+---Check whether the Docker daemon is reachable through the configured unix socket.
+---@param socket_path? string Path to the Docker unix socket (defaults to `DOCKER_SOCKET`)
+---@return boolean ok `true` if Docker is running, otherwise `false`
+---@return string? err Error message when Docker is not reachable
+local function docker_is_running(socket_path)
+  socket_path = socket_path or DOCKER_SOCKET
 
-  vim.fn.jobstart({ "sh", "-c", build_cmd }, {
-    term = true,
-    on_exit = vim.schedule_wrap(function(_, exit_code, _)
-      if exit_code ~= 0 then
-        vim.notify("Docker build failed, not running container", vim.log.levels.ERROR)
+  -- Verify the Docker unix socket exists
+  local stat = vim.uv.fs_stat(socket_path)
+  if not stat or stat.type ~= "socket" then
+    return false, "Docker socket not found at " .. socket_path .. " — is Docker Desktop running?"
+  end
+
+  -- Try a lightweight ping to confirm something is listening
+  local ping = vim.fn.system({
+    "curl",
+    "-s",
+    "--max-time",
+    "2",
+    "--unix-socket",
+    socket_path,
+    "http://localhost/_ping",
+  })
+
+  if vim.v.shell_error ~= 0 or ping == "" then
+    return false, "Cannot connect to Docker at " .. socket_path .. " — is Docker Desktop running?"
+  end
+
+  return true
+end
+
+local function get_running_containers()
+  -- Precheck: ensure Docker Desktop is running before issuing the real request
+  local ok, err = docker_is_running()
+  if not ok then
+    vim.notify(err or "", vim.log.levels.ERROR)
+    return
+  end
+
+  -- Docker API endpoint for listing containers (returns JSON)
+  local url = "http://localhost/v1.41/containers/json"
+
+  -- Build the curl command
+  local cmd = {
+    "curl",
+    "-s", -- Silent mode (hides progress bar)
+    "--unix-socket",
+    DOCKER_SOCKET,
+    url,
+  }
+
+  -- Execute asynchronously via vim.system
+  vim.system(cmd, { text = true }, function(obj)
+    -- Handle system-level errors (e.g., curl not found)
+    if obj.code ~= 0 then
+      vim.schedule(function()
+        vim.notify(
+          string.format("Docker request failed (code %d): %s", obj.code, obj.stderr or ""),
+          vim.log.levels.ERROR
+        )
+      end)
+      return
+    end
+
+    -- Process the JSON response
+    vim.schedule(function()
+      local success, containers = pcall(vim.json.decode, obj.stdout)
+
+      if not success or not containers then
+        vim.notify("Failed to parse Docker response", vim.log.levels.ERROR)
         return
       end
 
-      -- After a successful build, open a vertical split and run the container.
-      local run_cmd = "terminal docker run -it --rm --name %s %s /bin/bash"
-      vim.cmd("split")
-      vim.cmd(string.format(run_cmd, CONTAINER_NAME, IMAGE))
-    end),
-  })
+      if #containers == 0 then
+        print(vim.inspect(containers))
+        print("No containers are currently running.")
+        return
+      end
+
+      -- Iterate and print out the containers nicely
+      print("--- Running Docker Containers ---")
+      for _, container in ipairs(containers) do
+        -- Names usually come with a leading slash, e.g., "/my_nginx"
+        local name = container.Names[1]:sub(2)
+        local id = container.Id:sub(1, 12) -- Short ID
+        local status = container.Status
+
+        print(string.format("ID: %s | Name: %s | Status: %s", id, name, status))
+      end
+    end)
+  end)
 end
 
-function M.setup()
-  vim.api.nvim_create_user_command("DockerRunBuild", M.run_build, {
-    desc = "Build the current Dockerfile and run it interactively in a container",
-  })
-end
+-- Run the function
+-- get_running_containers()
+docker_is_running()
+
+M.docker_is_running = docker_is_running
 
 return M
