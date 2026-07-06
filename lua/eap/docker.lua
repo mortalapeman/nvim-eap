@@ -39,6 +39,11 @@ local function run()
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, names)
 end
 
+---@param vim_fn_system fun(args: table)
+---@param vim_uv_fs_stat fun(path: string)
+---@param vim_v_shell_error fun(): integer
+---@param socket_path string?
+---@return boolean, string?
 local function _docker_is_running(vim_fn_system, vim_uv_fs_stat, vim_v_shell_error, socket_path)
   socket_path = socket_path or DOCKER_SOCKET
   local error_message = "Docker socket not found at " .. socket_path .. " — is Docker Desktop running?"
