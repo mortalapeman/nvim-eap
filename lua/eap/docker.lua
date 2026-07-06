@@ -1,3 +1,6 @@
+local partial = require("eap.util").partial
+local inject = require("eap.inject")
+
 local M = {}
 
 local DOCKER_SOCKET = "/var/run/docker.sock"
@@ -36,21 +39,18 @@ local function run()
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, names)
 end
 
----Check whether the Docker daemon is reachable through the configured unix socket.
----@param socket_path? string Path to the Docker unix socket (defaults to `DOCKER_SOCKET`)
----@return boolean ok `true` if Docker is running, otherwise `false`
----@return string? err Error message when Docker is not reachable
-local function docker_is_running(socket_path)
+local function _docker_is_running(vim_fn_system, vim_uv_fs_stat, vim_v_shell_error, socket_path)
   socket_path = socket_path or DOCKER_SOCKET
+  local error_message = "Docker socket not found at " .. socket_path .. " — is Docker Desktop running?"
 
   -- Verify the Docker unix socket exists
-  local stat = vim.uv.fs_stat(socket_path)
+  local stat = vim_uv_fs_stat(socket_path)
   if not stat or stat.type ~= "socket" then
-    return false, "Docker socket not found at " .. socket_path .. " — is Docker Desktop running?"
+    return false, error_message
   end
 
   -- Try a lightweight ping to confirm something is listening
-  local ping = vim.fn.system({
+  local ping = vim_fn_system({
     "curl",
     "-s",
     "--max-time",
@@ -60,12 +60,17 @@ local function docker_is_running(socket_path)
     "http://localhost/_ping",
   })
 
-  if vim.v.shell_error ~= 0 or ping == "" then
-    return false, "Cannot connect to Docker at " .. socket_path .. " — is Docker Desktop running?"
+  if vim_v_shell_error() ~= 0 or ping == "" then
+    return false, error_message
   end
 
   return true
 end
+
+---Check whether the Docker daemon is reachable through the configured unix socket.
+---@type fun(socket_path?: string): boolean, string?
+local docker_is_running =
+  partial(_docker_is_running, inject.vim_fn_system, inject.vim_uv_fs_stat, inject.vim_v_shell_error)
 
 local function get_running_containers()
   -- Precheck: ensure Docker Desktop is running before issuing the real request
@@ -129,9 +134,8 @@ local function get_running_containers()
   end)
 end
 
--- Run the function
 -- get_running_containers()
-docker_is_running()
+-- docker_is_running()
 
 M.docker_is_running = docker_is_running
 

@@ -58,4 +58,28 @@ function M.delete_current_file()
   end
 end
 
+function M.partial(func, ...)
+  -- Capture the initial arguments supplied
+  local bound_args = { ... }
+  local bound_count = select("#", ...)
+
+  return function(...)
+    -- Capture the new arguments supplied at runtime
+    local new_args = { ... }
+    local new_count = select("#", ...)
+
+    -- Combine both sets of arguments
+    local combined = {}
+    for i = 1, bound_count do
+      combined[i] = bound_args[i]
+    end
+    for i = 1, new_count do
+      combined[bound_count + i] = new_args[i]
+    end
+
+    -- Unpack and call the original function
+    return func(unpack(combined))
+  end
+end
+
 return M
