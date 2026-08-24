@@ -294,6 +294,24 @@ local function parse_cwd_directive(lines)
 end
 
 ---@param lines string[]
+---@return string|nil stdin_cmd, string[] remaining_lines
+local function parse_stdin_directive(lines)
+  if #lines == 0 then
+    return nil, lines
+  end
+  local first = lines[1]
+  local cmd = first:match("^%-%-%s*stdin:%s*(.+)$") or first:match("^#%s*stdin:%s*(.+)$")
+  if cmd then
+    local remaining = {}
+    for i = 2, #lines do
+      table.insert(remaining, lines[i])
+    end
+    return cmd, remaining
+  end
+  return nil, lines
+end
+
+---@param lines string[]
 ---@param cwd string|nil
 ---@return string
 local function execute_lua(lines, cwd)
@@ -554,9 +572,33 @@ function ScratchpadState:execute_at_cursor()
     vim.notify("Cursor must be inside the code block (between fences)", vim.log.levels.WARN)
     return
   end
-  local cwd, remaining_lines = parse_cwd_directive(code_lines)
-  local result = run_code(lang, remaining_lines, cwd)
-  show_output(result)
+  local stdin_cmd, remaining_after_stdin = parse_stdin_directive(code_lines)
+  if stdin_cmd then
+    local cwd, remaining_lines = parse_cwd_directive(remaining_after_stdin)
+    local code = table.concat(remaining_lines, "\n")
+    local tmpfile = vim.fn.tempname()
+    vim.fn.writefile(vim.split(code, "\n"), tmpfile)
+    local cmd = stdin_cmd .. " < " .. vim.fn.shellescape(tmpfile)
+    local output
+    if cwd then
+      local expanded = vim.fn.fnamemodify(cwd, ":p")
+      output = vim.fn.system("cd " .. vim.fn.shellescape(expanded) .. " && " .. cmd)
+    else
+      output = vim.fn.system(cmd)
+    end
+    vim.fn.delete(tmpfile)
+    if vim.v.shell_error ~= 0 then
+      output = "Command error:\n" .. output
+    end
+    if output == "" then
+      output = "(no output)"
+    end
+    show_output(output)
+  else
+    local cwd, remaining_lines = parse_cwd_directive(code_lines)
+    local result = run_code(lang, remaining_lines, cwd)
+    show_output(result)
+  end
 end
 
 function M.setup()
