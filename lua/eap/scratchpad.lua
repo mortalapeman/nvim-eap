@@ -424,7 +424,13 @@ end
 local function detect_lang_at_cursor(buf_id)
   local lines = vim.api.nvim_buf_get_lines(buf_id, 0, -1, false)
   local cursor = vim.api.nvim_win_get_cursor(vim.api.nvim_get_current_win())
-  local _, _, lang = find_code_block_at_cursor(lines, cursor[1])
+  local fence_start, fence_end, lang = find_code_block_at_cursor(lines, cursor[1])
+  if not lang then
+    return nil
+  end
+  if cursor[1] <= fence_start or cursor[1] >= fence_end then
+    return nil
+  end
   return lang
 end
 
