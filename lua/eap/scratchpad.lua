@@ -420,11 +420,6 @@ end
 ---@param result string
 local function show_output(result)
   local lines = vim.split(result, "\n")
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].buftype = "nofile"
-  vim.bo[buf].bufhidden = "wipe"
-  vim.bo[buf].swapfile = false
   local width = 0
   for _, line in ipairs(lines) do
     if #line > width then
@@ -435,6 +430,25 @@ local function show_output(result)
   local height = math.min(math.max(#lines, 5), math.floor(vim.o.lines * 0.6))
   local row = math.floor((vim.o.lines - height) / 2)
   local col = math.floor((vim.o.columns - width) / 2)
+
+  if _output_win and vim.api.nvim_win_is_valid(_output_win) then
+    local win_buf = vim.api.nvim_win_get_buf(_output_win)
+    vim.api.nvim_buf_set_lines(win_buf, 0, -1, false, lines)
+    vim.api.nvim_win_set_config(_output_win, {
+      relative = "editor",
+      width = width,
+      height = height,
+      row = row,
+      col = col,
+    })
+    return
+  end
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].swapfile = false
   local win = vim.api.nvim_open_win(buf, false, {
     relative = "editor",
     width = width,
