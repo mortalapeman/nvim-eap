@@ -53,10 +53,10 @@ local function render_status(status_buf, name, mode)
   local mode_text = mode == "t" and " T " or " N "
   local mode_hl = mode == "t" and "EapTermTerminal" or "EapTermNormal"
   local virt_text = {}
+  table.insert(virt_text, { mode_text, mode_hl })
   if name ~= "" then
     table.insert(virt_text, { " " .. name .. " ", "EapTermName" })
   end
-  table.insert(virt_text, { mode_text, mode_hl })
   vim.api.nvim_buf_set_lines(status_buf, 0, -1, false, { "" })
   vim.api.nvim_buf_clear_namespace(status_buf, ns_id, 0, -1)
   vim.api.nvim_buf_set_extmark(status_buf, ns_id, 0, 0, {
@@ -306,6 +306,10 @@ function M.toggle()
 
   start_mode_tracking()
   vim.cmd("startinsert")
+  vim.schedule(function()
+    local mode = vim.fn.mode() == "t" and "t" or "n"
+    update_mode_status(mode)
+  end)
 end
 
 function M.as_worker()
@@ -400,6 +404,10 @@ function M.toggle_worker(worker_id)
   worker.status_win_id, worker.status_buf_id = create_status_bar(worker.win_id)
   start_worker_mode_tracking(worker)
   vim.cmd("startinsert")
+  vim.schedule(function()
+    local mode = vim.fn.mode() == "t" and "t" or "n"
+    update_worker_status(worker, mode)
+  end)
 end
 
 function M._state()

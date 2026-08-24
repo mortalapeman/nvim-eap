@@ -102,7 +102,7 @@ T["terminals.rename()"]["shows name with T in terminal mode"] = function()
   child.lua([[M.toggle()]])
   child.lua([[M.rename("dev")]])
   local text = child.lua("return M._get_status_text()")
-  eq(" dev  T ", text)
+  eq(" T  dev ", text)
 end
 
 T["terminals.rename()"]["shows name with N in normal mode"] = function()
@@ -110,7 +110,7 @@ T["terminals.rename()"]["shows name with N in normal mode"] = function()
   child.lua([[M.rename("dev")]])
   child.lua("vim.cmd('stopinsert')")
   local text = child.lua("return M._get_status_text()")
-  eq(" dev  N ", text)
+  eq(" N  dev ", text)
 end
 
 T["terminals.rename()"]["name persists across toggle"] = function()
@@ -119,7 +119,7 @@ T["terminals.rename()"]["name persists across toggle"] = function()
   child.lua([[M.toggle()]])
   child.lua([[M.toggle()]])
   local text = child.lua("return M._get_status_text()")
-  eq(" prod  T ", text)
+  eq(" T  prod ", text)
 end
 
 T["terminals.rename()"]["clears name with empty string"] = function()
@@ -262,7 +262,17 @@ T["terminals.toggle_worker()"]["worker status shows name and mode"] = function()
   child.lua([[M.as_worker()]])
   child.lua(string.format("M.toggle_worker(%d)", 1))
   local text = child.lua("return M._get_worker_status_text(1)")
-  eq(" dev  T ", text)
+  eq(" T  dev ", text)
+end
+
+T["terminals.toggle_worker()"]["status reflects actual mode after opening"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  child.lua(string.format("M.toggle_worker(%d)", 1))
+  child.lua("vim.cmd('stopinsert')")
+  local text = child.lua("return M._get_worker_status_text(1)")
+  eq(" N  dev ", text)
 end
 
 T["terminals.pickers()"] = new_set()
