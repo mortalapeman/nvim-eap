@@ -234,6 +234,22 @@ T["terminals.toggle_worker()"]["closes worker window"] = function()
   eq(nil, worker_state.win_id)
 end
 
+T["terminals.toggle_worker()"]["no duplicate extmarks after toggle cycle"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  child.lua(string.format("M.toggle_worker(%d)", 1))
+  child.lua(string.format("M.toggle_worker(%d)", 1))
+  child.lua(string.format("M.toggle_worker(%d)", 1))
+  local count = child.lua([[
+    local ns = vim.api.nvim_create_namespace('eap.terminals')
+    local w = M._workers()[1]
+    local marks = vim.api.nvim_buf_get_extmarks(w.buf_id, ns, 0, -1, {})
+    return #marks
+  ]])
+  eq(1, count)
+end
+
 T["terminals.pickers()"] = new_set()
 
 T["terminals.pickers()"]["returns early with no workers"] = function()
