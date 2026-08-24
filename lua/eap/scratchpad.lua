@@ -7,6 +7,10 @@ local logger = logging.get_logger("eap.scratchpad")
 
 ---@type integer|nil
 local _output_win = nil
+---@type integer|nil
+local _output_prev_win = nil
+---@type integer[]|nil
+local _output_prev_cursor = nil
 
 ---@class ScratchpadState
 ---@field _dbfile string
@@ -501,6 +505,9 @@ local function show_output(result)
     title = " Output ",
     title_pos = "center",
   })
+  _output_prev_win = vim.api.nvim_get_current_win()
+  _output_prev_cursor = vim.api.nvim_win_get_cursor(_output_prev_win)
+  vim.api.nvim_set_current_win(win)
   local function close_win()
     _output_win = nil
     vim.api.nvim_clear_autocmds({ group = "eap_scratchpad_output" })
@@ -509,6 +516,14 @@ local function show_output(result)
     if vim.api.nvim_win_is_valid(win) then
       vim.api.nvim_win_close(win, true)
     end
+    if _output_prev_win and vim.api.nvim_win_is_valid(_output_prev_win) then
+      vim.api.nvim_set_current_win(_output_prev_win)
+      if _output_prev_cursor then
+        vim.api.nvim_win_set_cursor(_output_prev_win, _output_prev_cursor)
+      end
+    end
+    _output_prev_win = nil
+    _output_prev_cursor = nil
   end
   vim.keymap.set("n", "q", close_win, { silent = true, buffer = buf })
   vim.keymap.set("n", "<Esc>", close_win, { silent = true })
