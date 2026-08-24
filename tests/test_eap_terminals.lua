@@ -95,4 +95,44 @@ T["terminals.extmark()"]["no duplicate extmarks after toggle cycle"] = function(
   eq(1, count)
 end
 
+T["terminals.rename()"] = new_set()
+
+T["terminals.rename()"]["sets name in state"] = function()
+  child.lua([[M.rename("dev")]])
+  local name = child.lua("return M._state().name")
+  eq("dev", name)
+end
+
+T["terminals.rename()"]["shows name with T in terminal mode"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  local text = child.lua("return M._get_extmark_text()")
+  eq(" T  dev ", text)
+end
+
+T["terminals.rename()"]["shows name with N in normal mode"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua("vim.cmd('stopinsert')")
+  local text = child.lua("return M._get_extmark_text()")
+  eq(" N  dev ", text)
+end
+
+T["terminals.rename()"]["name persists across toggle"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("prod")]])
+  child.lua([[M.toggle()]])
+  child.lua([[M.toggle()]])
+  local text = child.lua("return M._get_extmark_text()")
+  eq(" T  prod ", text)
+end
+
+T["terminals.rename()"]["clears name with empty string"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.rename("")]])
+  local text = child.lua("return M._get_extmark_text()")
+  eq(" T ", text)
+end
+
 return T

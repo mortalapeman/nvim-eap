@@ -10,10 +10,13 @@ local _buf_id = nil
 local _augroup = nil
 ---@type integer|nil
 local _extmark_id = nil
+---@type string
+local _name = ""
 
 local function setup_highlights()
   vim.api.nvim_set_hl(0, "EapTermNormal", { bg = "#5e81ac", fg = "#eceff4", bold = true })
   vim.api.nvim_set_hl(0, "EapTermTerminal", { bg = "#a3be8c", fg = "#eceff4", bold = true })
+  vim.api.nvim_set_hl(0, "EapTermName", { bg = "#3b4252", fg = "#d8dee9", bold = true })
 end
 
 ---@param mode string
@@ -21,14 +24,18 @@ local function update_mode_extmark(mode)
   if not _buf_id or not vim.api.nvim_buf_is_valid(_buf_id) then
     return
   end
-  local text = mode == "t" and " T " or " N "
-  local hl = mode == "t" and "EapTermTerminal" or "EapTermNormal"
+  local mode_text = mode == "t" and " T " or " N "
+  local mode_hl = mode == "t" and "EapTermTerminal" or "EapTermNormal"
+  local virt_text = { { mode_text, mode_hl } }
+  if _name ~= "" then
+    table.insert(virt_text, { " " .. _name .. " ", "EapTermName" })
+  end
   local line_count = vim.api.nvim_buf_line_count(_buf_id)
   local line = line_count - 1
   if _extmark_id then
     local ok = pcall(vim.api.nvim_buf_set_extmark, _buf_id, ns_id, line, 0, {
       id = _extmark_id,
-      virt_text = { { text, hl } },
+      virt_text = virt_text,
       virt_text_pos = "eol",
     })
     if not ok then
@@ -37,7 +44,7 @@ local function update_mode_extmark(mode)
   end
   if not _extmark_id then
     _extmark_id = vim.api.nvim_buf_set_extmark(_buf_id, ns_id, line, 0, {
-      virt_text = { { text, hl } },
+      virt_text = virt_text,
       virt_text_pos = "eol",
     })
   end
@@ -161,7 +168,7 @@ function M.toggle()
 end
 
 function M._state()
-  return { win_id = _win_id, buf_id = _buf_id, extmark_id = _extmark_id }
+  return { win_id = _win_id, buf_id = _buf_id, extmark_id = _extmark_id, name = _name }
 end
 
 function M._get_extmark_text()
@@ -173,12 +180,31 @@ function M._get_extmark_text()
   if not ok or not result or not result[3] or not result[3].virt_text then
     return nil
   end
-  return result[3].virt_text[1][1]
+  local parts = {}
+  for _, segment in ipairs(result[3].virt_text) do
+    table.insert(parts, segment[1])
+  end
+  return table.concat(parts)
+end
+
+function M.rename(name)
+  _name = name or ""
+  if is_open() then
+    local mode = vim.fn.mode() == "t" and "t" or "n"
+    update_mode_extmark(mode)
+  end
 end
 
 function M.setup()
   setup_highlights()
   vim.keymap.set("n", "<leader>lc", M.toggle, { desc = "Toggle floating terminal" })
+
+  vim.api.nvim_create_user_command("TerminalRename", function(opts)
+    M.rename(opts.args)
+  end, {
+    nargs = "?",
+    desc = "Rename the floating terminal",
+  })
 end
 
 return M
