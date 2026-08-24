@@ -375,6 +375,66 @@ function M.rename(name)
   end
 end
 
+function M.pickers()
+  local ok, _ = pcall(require, "telescope.config")
+  if not ok then
+    vim.notify("Telescope is not installed", vim.log.levels.ERROR)
+    return
+  end
+  local finders = require("telescope.finders")
+  local pickers = require("telescope.pickers")
+  local actions = require("telescope.actions")
+  local action_state = require("telescope.actions.state")
+  local previewers = require("telescope.previewers")
+  local conf = require("telescope.config").values
+
+  local workers = M._workers()
+  if #workers == 0 then
+    vim.notify("No worker terminals", vim.log.levels.INFO)
+    return
+  end
+
+  local buffer_previewer = previewers.new_buffer_previewer({
+    define_preview = function(self, entry)
+      local worker = entry.value
+      if worker.buf_id and vim.api.nvim_buf_is_valid(worker.buf_id) then
+        local lines = vim.api.nvim_buf_get_lines(worker.buf_id, 0, -1, false)
+        vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
+      else
+        vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, { "(empty terminal)" })
+      end
+    end,
+  })
+
+  pickers
+    .new({}, {
+      prompt_title = "Worker Terminals",
+      finder = finders.new_table({
+        results = workers,
+        entry_maker = function(entry)
+          return {
+            value = entry,
+            display = entry.name,
+            ordinal = entry.name,
+          }
+        end,
+      }),
+      previewer = buffer_previewer,
+      sorter = conf.generic_sorter({}),
+      attach_mappings = function(prompt_bufnr)
+        actions.select_default:replace(function()
+          actions.close(prompt_bufnr)
+          local selection = action_state.get_selected_entry()
+          if selection then
+            M.toggle_worker(selection.value.id)
+          end
+        end)
+        return true
+      end,
+    })
+    :find()
+end
+
 function M.setup()
   setup_highlights()
   vim.keymap.set("n", "<leader>to", M.toggle, { desc = "Toggle floating terminal" })
@@ -386,6 +446,7 @@ function M.setup()
       end
     end)
   end, { desc = "Rename floating terminal" })
+  vim.keymap.set("n", "<leader>st", M.pickers, { desc = "Search worker terminals" })
 
   vim.api.nvim_create_user_command("TerminalRename", function(opts)
     M.rename(opts.args)

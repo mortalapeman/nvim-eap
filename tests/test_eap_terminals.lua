@@ -234,4 +234,26 @@ T["terminals.toggle_worker()"]["closes worker window"] = function()
   eq(nil, worker_state.win_id)
 end
 
+T["terminals.pickers()"] = new_set()
+
+T["terminals.pickers()"]["returns early with no workers"] = function()
+  child.lua([[M.pickers()]])
+  local workers = child.lua("return M._workers()")
+  eq(0, #workers)
+end
+
+T["terminals.pickers()"]["picker can be invoked with workers"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  child.lua([[M.pickers()]])
+  local workers = child.lua("return M._workers()")
+  eq(1, #workers)
+end
+
+T["terminals.pickers()"]["picker function exists"] = function()
+  local exists = child.lua("return type(M.pickers) == 'function'")
+  eq(true, exists)
+end
+
 return T
