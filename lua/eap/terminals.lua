@@ -1,9 +1,62 @@
 local M = {}
 
+local ns_id = vim.api.nvim_create_namespace("eap.terminals")
+
 ---@type integer|nil
 local _win_id = nil
 ---@type integer|nil
 local _buf_id = nil
+---@type integer|nil
+local _augroup = nil
+
+local function setup_highlights()
+  vim.api.nvim_set_hl(0, "EapTermNormal", { bg = "#5e81ac", fg = "#eceff4", bold = true })
+  vim.api.nvim_set_hl(0, "EapTermTerminal", { bg = "#a3be8c", fg = "#eceff4", bold = true })
+end
+
+---@param mode string
+local function update_mode_extmark(mode)
+  if not _buf_id or not vim.api.nvim_buf_is_valid(_buf_id) then
+    return
+  end
+  local text = mode == "t" and " T " or " N "
+  local hl = mode == "t" and "EapTermTerminal" or "EapTermNormal"
+  local line_count = vim.api.nvim_buf_line_count(_buf_id)
+  vim.api.nvim_buf_clear_namespace(_buf_id, ns_id, 0, line_count)
+  vim.api.nvim_buf_set_extmark(_buf_id, ns_id, line_count - 1, 0, {
+    virt_text = { { text, hl } },
+    virt_text_pos = "eol",
+  })
+end
+
+local function start_mode_tracking()
+  if _augroup then
+    vim.api.nvim_del_augroup_by_id(_augroup)
+  end
+  _augroup = vim.api.nvim_create_augroup("eap_term_mode", { clear = true })
+  vim.api.nvim_create_autocmd("ModeChanged", {
+    group = _augroup,
+    pattern = "*:[tT]",
+    callback = function()
+      update_mode_extmark("t")
+    end,
+  })
+  vim.api.nvim_create_autocmd("ModeChanged", {
+    group = _augroup,
+    pattern = "[tT]:n",
+    callback = function()
+      update_mode_extmark("n")
+    end,
+  })
+  update_mode_extmark("t")
+end
+
+local function stop_mode_tracking()
+  if _augroup then
+    vim.api.nvim_del_augroup_by_id(_augroup)
+    _augroup = nil
+  end
+end
 
 local function is_open()
   if _win_id and vim.api.nvim_win_is_valid(_win_id) then
@@ -12,17 +65,22 @@ local function is_open()
   return false
 end
 
-local function close()
+local function close_window()
+  stop_mode_tracking()
   if _win_id and vim.api.nvim_win_is_valid(_win_id) then
     vim.api.nvim_win_close(_win_id, true)
   end
   _win_id = nil
+end
+
+local function close()
+  close_window()
   _buf_id = nil
 end
 
 function M.toggle()
   if is_open() then
-    close()
+    close_window()
     return
   end
 
@@ -43,6 +101,7 @@ function M.toggle()
       title = " Terminal ",
       title_pos = "center",
     })
+    start_mode_tracking()
     vim.cmd("startinsert")
     return
   end
@@ -64,20 +123,26 @@ function M.toggle()
     term = true,
     on_exit = function()
       vim.schedule(function()
-        close()
+        close_window()
       end)
     end,
   })
 
   vim.keymap.set("t", "<Esc>", function()
-    close()
+    close_window()
     vim.cmd("stopinsert")
   end, { buffer = _buf_id, silent = true })
 
+  start_mode_tracking()
   vim.cmd("startinsert")
 end
 
+function M._state()
+  return { win_id = _win_id, buf_id = _buf_id }
+end
+
 function M.setup()
+  setup_highlights()
   vim.keymap.set("n", "<leader>lc", M.toggle, { desc = "Toggle floating terminal" })
 end
 
