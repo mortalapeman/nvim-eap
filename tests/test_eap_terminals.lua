@@ -81,4 +81,18 @@ T["terminals.mode()"]["updates when switching modes"] = function()
   eq(" T ", child.lua("return M._get_extmark_text()"))
 end
 
+T["terminals.extmark()"] = new_set()
+
+T["terminals.extmark()"]["no duplicate extmarks after toggle cycle"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.toggle()]])
+  child.lua([[M.toggle()]])
+  local count = child.lua([[
+    local ns = vim.api.nvim_create_namespace('eap.terminals')
+    local marks = vim.api.nvim_buf_get_extmarks(M._state().buf_id, ns, 0, -1, {})
+    return #marks
+  ]])
+  eq(1, count)
+end
+
 return T

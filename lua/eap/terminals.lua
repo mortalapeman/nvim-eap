@@ -88,6 +88,9 @@ local function close_window()
   if _win_id and vim.api.nvim_win_is_valid(_win_id) then
     vim.api.nvim_win_close(_win_id, true)
   end
+  if _buf_id and vim.api.nvim_buf_is_valid(_buf_id) then
+    vim.api.nvim_buf_clear_namespace(_buf_id, ns_id, 0, -1)
+  end
   _win_id = nil
   _extmark_id = nil
 end
