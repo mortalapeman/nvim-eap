@@ -5,6 +5,9 @@ local M = {}
 
 local logger = logging.get_logger("eap.scratchpad")
 
+---@type integer|nil
+local _output_win = nil
+
 ---@class ScratchpadState
 ---@field _dbfile string
 ---@field _scratch_dir string
@@ -75,14 +78,17 @@ function ScratchpadState:create(name)
     "# " .. name,
     "",
     "```lua",
+    "-- cwd: " .. vim.fn.getcwd(),
     "",
     "```",
     "",
     "```python",
+    "# cwd: " .. vim.fn.getcwd(),
     "",
     "```",
     "",
     "```bash",
+    "# cwd: " .. vim.fn.getcwd(),
     "",
     "```",
   }, filepath)
@@ -141,10 +147,8 @@ end
 
 ---@return Scratchpad|nil
 function ScratchpadState:active()
-  local result, error = sqlite.execute_sql(
-    self._dbfile,
-    "select scratchpad_id, name, filename, active from scratchpad where active = 1"
-  )
+  local result, error =
+    sqlite.execute_sql(self._dbfile, "select scratchpad_id, name, filename, active from scratchpad where active = 1")
   if error and error ~= "No output" then
     logger.error(error)
     return nil
@@ -263,18 +267,53 @@ function ScratchpadState:select()
   end)
 end
 
+---Parse a cwd directive from the first line of code.
+---Supported formats: `-- cwd: <path>` or `# cwd: <path>`
 ---@param lines string[]
+---@return string|nil cwd, string[] remaining_lines
+local function parse_cwd_directive(lines)
+  if #lines == 0 then
+    return nil, lines
+  end
+  local first = lines[1]
+  local cwd = first:match("^%-%-%s*cwd:%s*(.+)$") or first:match("^#%s*cwd:%s*(.+)$")
+  if cwd then
+    local remaining = {}
+    for i = 2, #lines do
+      table.insert(remaining, lines[i])
+    end
+    return cwd, remaining
+  end
+  return nil, lines
+end
+
+---@param lines string[]
+---@param cwd string|nil
 ---@return string
-local function execute_lua(lines)
+local function execute_lua(lines, cwd)
   local code = table.concat(lines, "\n")
   local func, err = loadstring(code)
   if not func then
     return "Lua load error: " .. (err or "unknown")
   end
   local results = {}
-  local chunks = { func() }
-  for _, v in ipairs(chunks) do
-    table.insert(results, tostring(v))
+  if cwd then
+    local expanded = vim.fn.fnamemodify(cwd, ":p")
+    local prev_cwd = vim.fn.getcwd()
+    vim.fn.chdir(expanded)
+    local ok, chunks = pcall(func)
+    vim.fn.chdir(prev_cwd)
+    if not ok then
+      return "Lua error: " .. tostring(chunks)
+    end
+    for _, v in ipairs(chunks or {}) do
+      table.insert(results, tostring(v))
+    end
+  else
+    local chunks = { func() }
+    for _, v in ipairs(chunks) do
+      table.insert(results, tostring(v))
+    end
   end
   if #results == 0 then
     return "(no output)"
@@ -283,12 +322,20 @@ local function execute_lua(lines)
 end
 
 ---@param lines string[]
+---@param cwd string|nil
 ---@return string
-local function execute_python(lines)
+local function execute_python(lines, cwd)
   local code = table.concat(lines, "\n")
   local tmpfile = vim.fn.tempname() .. ".py"
   vim.fn.writefile(vim.split(code, "\n"), tmpfile)
-  local output = vim.fn.system("python3 " .. tmpfile)
+  local cmd = "python3 " .. tmpfile
+  local output
+  if cwd then
+    local expanded = vim.fn.fnamemodify(cwd, ":p")
+    output = vim.fn.system("cd " .. vim.fn.shellescape(expanded) .. " && " .. cmd)
+  else
+    output = vim.fn.system(cmd)
+  end
   vim.fn.delete(tmpfile)
   if vim.v.shell_error ~= 0 then
     return "Python error:\n" .. output
@@ -300,12 +347,20 @@ local function execute_python(lines)
 end
 
 ---@param lines string[]
+---@param cwd string|nil
 ---@return string
-local function execute_bash(lines)
+local function execute_bash(lines, cwd)
   local code = table.concat(lines, "\n")
   local tmpfile = vim.fn.tempname() .. ".sh"
   vim.fn.writefile(vim.split(code, "\n"), tmpfile)
-  local output = vim.fn.system("bash " .. tmpfile)
+  local cmd = "bash " .. tmpfile
+  local output
+  if cwd then
+    local expanded = vim.fn.fnamemodify(cwd, ":p")
+    output = vim.fn.system("cd " .. vim.fn.shellescape(expanded) .. " && " .. cmd)
+  else
+    output = vim.fn.system(cmd)
+  end
   vim.fn.delete(tmpfile)
   if vim.v.shell_error ~= 0 then
     return "Bash error:\n" .. output
@@ -318,8 +373,9 @@ end
 
 ---@param lang string
 ---@param lines string[]
+---@param cwd string|nil
 ---@return string
-local function run_code(lang, lines)
+local function run_code(lang, lines, cwd)
   local executors = {
     lua = execute_lua,
     python = execute_python,
@@ -330,7 +386,7 @@ local function run_code(lang, lines)
   if not executor then
     return "Unsupported language: " .. lang .. "\nSupported: lua, python, sh/bash"
   end
-  return executor(lines)
+  return executor(lines, cwd)
 end
 
 ---@param content string
@@ -390,14 +446,8 @@ local function show_output(result)
     title = " Output ",
     title_pos = "center",
   })
-  vim.api.nvim_create_autocmd("CursorMoved", {
-    callback = function()
-      if not vim.api.nvim_win_is_valid(win) then
-        return true
-      end
-    end,
-  })
   local function close_win()
+    _output_win = nil
     vim.api.nvim_clear_autocmds({ group = "eap_scratchpad_output" })
     pcall(vim.keymap.del, "n", "q")
     pcall(vim.keymap.del, "n", "<Esc>")
@@ -405,7 +455,7 @@ local function show_output(result)
       vim.api.nvim_win_close(win, true)
     end
   end
-  vim.keymap.set("n", "q", close_win, { silent = true })
+  vim.keymap.set("n", "q", close_win, { silent = true, buffer = buf })
   vim.keymap.set("n", "<Esc>", close_win, { silent = true })
   local augroup = vim.api.nvim_create_augroup("eap_scratchpad_output", { clear = true })
   vim.api.nvim_create_autocmd("WinClosed", {
@@ -413,6 +463,7 @@ local function show_output(result)
     pattern = tostring(win),
     callback = close_win,
   })
+  _output_win = win
 end
 
 function ScratchpadState:execute_at_cursor()
@@ -433,7 +484,8 @@ function ScratchpadState:execute_at_cursor()
     vim.notify("Cursor must be inside the code block (between fences)", vim.log.levels.WARN)
     return
   end
-  local result = run_code(lang, code_lines)
+  local cwd, remaining_lines = parse_cwd_directive(code_lines)
+  local result = run_code(lang, remaining_lines, cwd)
   show_output(result)
 end
 
