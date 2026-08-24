@@ -250,6 +250,40 @@ T["terminals.toggle_worker()"]["no duplicate extmarks after toggle cycle"] = fun
   eq(1, count)
 end
 
+T["terminals.toggle_worker()"]["esc keymap exists on reopened worker"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  child.lua(string.format("M.toggle_worker(%d)", 1))
+  child.lua(string.format("M.toggle_worker(%d)", 1))
+  child.lua(string.format("M.toggle_worker(%d)", 1))
+  local has_keymap = child.lua([[
+    local w = M._workers()[1]
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(w.buf_id, 't')) do
+      if m.lhs == '<Esc>' then return true end
+    end
+    return false
+  ]])
+  eq(true, has_keymap)
+end
+
+T["terminals.toggle_worker()"]["esc closes worker window"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  child.lua(string.format("M.toggle_worker(%d)", 1))
+  local w = child.lua("return M._workers()[1]")
+  eq("number", type(w.win_id))
+  local has_keymap = child.lua(string.format([[
+    local buf_id = M._workers()[1].buf_id
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf_id, 't')) do
+      if m.lhs == '<Esc>' then return true end
+    end
+    return false
+  ]]))
+  eq(true, has_keymap)
+end
+
 T["terminals.pickers()"] = new_set()
 
 T["terminals.pickers()"]["returns early with no workers"] = function()

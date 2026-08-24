@@ -320,11 +320,12 @@ function M.toggle_worker(worker_id)
         end)
       end,
     })
-    vim.keymap.set("t", "<Esc>", function()
-      close_worker_window(worker)
-      vim.cmd("stopinsert")
-    end, { buffer = worker.buf_id, silent = true })
   end
+
+  vim.keymap.set("t", "<Esc>", function()
+    close_worker_window(worker)
+    vim.cmd("stopinsert")
+  end, { buffer = worker.buf_id, silent = true })
 
   worker.win_id = vim.api.nvim_open_win(worker.buf_id, true, {
     relative = "editor",
