@@ -8,6 +8,8 @@ local _win_id = nil
 local _buf_id = nil
 ---@type integer|nil
 local _augroup = nil
+---@type integer|nil
+local _extmark_id = nil
 
 local function setup_highlights()
   vim.api.nvim_set_hl(0, "EapTermNormal", { bg = "#5e81ac", fg = "#eceff4", bold = true })
@@ -22,11 +24,23 @@ local function update_mode_extmark(mode)
   local text = mode == "t" and " T " or " N "
   local hl = mode == "t" and "EapTermTerminal" or "EapTermNormal"
   local line_count = vim.api.nvim_buf_line_count(_buf_id)
-  vim.api.nvim_buf_clear_namespace(_buf_id, ns_id, 0, line_count)
-  vim.api.nvim_buf_set_extmark(_buf_id, ns_id, line_count - 1, 0, {
-    virt_text = { { text, hl } },
-    virt_text_pos = "eol",
-  })
+  local line = line_count - 1
+  if _extmark_id then
+    local ok = pcall(vim.api.nvim_buf_set_extmark, _buf_id, ns_id, line, 0, {
+      id = _extmark_id,
+      virt_text = { { text, hl } },
+      virt_text_pos = "eol",
+    })
+    if not ok then
+      _extmark_id = nil
+    end
+  end
+  if not _extmark_id then
+    _extmark_id = vim.api.nvim_buf_set_extmark(_buf_id, ns_id, line, 0, {
+      virt_text = { { text, hl } },
+      virt_text_pos = "eol",
+    })
+  end
 end
 
 local function start_mode_tracking()
@@ -38,14 +52,18 @@ local function start_mode_tracking()
     group = _augroup,
     pattern = "*:[tT]",
     callback = function()
-      update_mode_extmark("t")
+      vim.schedule(function()
+        update_mode_extmark("t")
+      end)
     end,
   })
   vim.api.nvim_create_autocmd("ModeChanged", {
     group = _augroup,
-    pattern = "[tT]:n",
+    pattern = "[tT]*:n*",
     callback = function()
-      update_mode_extmark("n")
+      vim.schedule(function()
+        update_mode_extmark("n")
+      end)
     end,
   })
   update_mode_extmark("t")
@@ -71,6 +89,7 @@ local function close_window()
     vim.api.nvim_win_close(_win_id, true)
   end
   _win_id = nil
+  _extmark_id = nil
 end
 
 local function close()
@@ -107,6 +126,7 @@ function M.toggle()
   end
 
   _buf_id = vim.api.nvim_create_buf(false, true)
+  _extmark_id = nil
   _win_id = vim.api.nvim_open_win(_buf_id, true, {
     relative = "editor",
     width = width,
@@ -138,7 +158,19 @@ function M.toggle()
 end
 
 function M._state()
-  return { win_id = _win_id, buf_id = _buf_id }
+  return { win_id = _win_id, buf_id = _buf_id, extmark_id = _extmark_id }
+end
+
+function M._get_extmark_text()
+  if not _buf_id or not vim.api.nvim_buf_is_valid(_buf_id) or not _extmark_id then
+    return nil
+  end
+  local cur_ns = vim.api.nvim_create_namespace("eap.terminals")
+  local ok, result = pcall(vim.api.nvim_buf_get_extmark_by_id, _buf_id, cur_ns, _extmark_id, { details = true })
+  if not ok or not result or not result[3] or not result[3].virt_text then
+    return nil
+  end
+  return result[3].virt_text[1][1]
 end
 
 function M.setup()

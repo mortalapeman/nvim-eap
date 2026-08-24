@@ -57,4 +57,28 @@ T["terminals.toggle()"]["singleton reuses buffer"] = function()
   eq(first_buf, second_buf)
 end
 
+T["terminals.mode()"] = new_set()
+
+T["terminals.mode()"]["shows T in terminal mode"] = function()
+  child.lua([[M.toggle()]])
+  local text = child.lua("return M._get_extmark_text()")
+  eq(" T ", text)
+end
+
+T["terminals.mode()"]["shows N in normal mode"] = function()
+  child.lua([[M.toggle()]])
+  child.lua("vim.cmd('stopinsert')")
+  local text = child.lua("return M._get_extmark_text()")
+  eq(" N ", text)
+end
+
+T["terminals.mode()"]["updates when switching modes"] = function()
+  child.lua([[M.toggle()]])
+  eq(" T ", child.lua("return M._get_extmark_text()"))
+  child.lua("vim.cmd('stopinsert')")
+  eq(" N ", child.lua("return M._get_extmark_text()"))
+  child.lua("vim.cmd('startinsert')")
+  eq(" T ", child.lua("return M._get_extmark_text()"))
+end
+
 return T
