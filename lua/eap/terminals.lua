@@ -9,14 +9,17 @@ local _buf_id = nil
 ---@type integer|nil
 local _augroup = nil
 ---@type integer|nil
-local _extmark_id = nil
+local _status_win = nil
+---@type integer|nil
+local _status_buf = nil
 ---@type string
 local _name = ""
 
 ---@class WorkerTerminal
 ---@field buf_id integer
 ---@field win_id integer|nil
----@field extmark_id integer|nil
+---@field status_win_id integer|nil
+---@field status_buf_id integer|nil
 ---@field augroup integer|nil
 ---@field name string
 ---@type table<integer, WorkerTerminal>
@@ -27,52 +30,107 @@ local function setup_highlights()
   vim.api.nvim_set_hl(0, "EapTermNormal", { bg = "#5e81ac", fg = "#eceff4", bold = true })
   vim.api.nvim_set_hl(0, "EapTermTerminal", { bg = "#a3be8c", fg = "#eceff4", bold = true })
   vim.api.nvim_set_hl(0, "EapTermName", { bg = "#3b4252", fg = "#d8dee9", bold = true })
+  vim.api.nvim_set_hl(0, "EapTermStatus", { bg = "#3b4252", fg = "#d8dee9" })
 end
 
----@param buf_id integer
----@param extmark_id integer|nil
+---@param win_id integer
+---@return integer, integer # width, height of the window
+local function get_win_size(win_id)
+  if not win_id or not vim.api.nvim_win_is_valid(win_id) then
+    return 0, 0
+  end
+  local config = vim.api.nvim_win_get_config(win_id)
+  return config.width, config.height
+end
+
+---@param status_buf integer
 ---@param name string
 ---@param mode string
-local function render_extmark(buf_id, extmark_id, name, mode)
-  if not buf_id or not vim.api.nvim_buf_is_valid(buf_id) then
-    return extmark_id
+local function render_status(status_buf, name, mode)
+  if not status_buf or not vim.api.nvim_buf_is_valid(status_buf) then
+    return
   end
   local mode_text = mode == "t" and " T " or " N "
   local mode_hl = mode == "t" and "EapTermTerminal" or "EapTermNormal"
-  local virt_text = { { mode_text, mode_hl } }
+  local virt_text = {}
   if name ~= "" then
     table.insert(virt_text, { " " .. name .. " ", "EapTermName" })
   end
-  local line_count = vim.api.nvim_buf_line_count(buf_id)
-  local line = line_count - 1
-  if extmark_id then
-    local ok = pcall(vim.api.nvim_buf_set_extmark, buf_id, ns_id, line, 0, {
-      id = extmark_id,
-      virt_text = virt_text,
-      virt_text_pos = "eol",
-    })
-    if not ok then
-      extmark_id = nil
-    end
+  table.insert(virt_text, { mode_text, mode_hl })
+  vim.api.nvim_buf_set_lines(status_buf, 0, -1, false, { "" })
+  vim.api.nvim_buf_clear_namespace(status_buf, ns_id, 0, -1)
+  vim.api.nvim_buf_set_extmark(status_buf, ns_id, 0, 0, {
+    virt_text = virt_text,
+    virt_text_pos = "eol",
+  })
+end
+
+---@param win_id integer
+---@return integer|nil status_win_id, integer|nil status_buf_id
+local function create_status_bar(win_id)
+  if not win_id or not vim.api.nvim_win_is_valid(win_id) then
+    return nil, nil
   end
-  if not extmark_id then
-    extmark_id = vim.api.nvim_buf_set_extmark(buf_id, ns_id, line, 0, {
-      virt_text = virt_text,
-      virt_text_pos = "eol",
-    })
+  local config = vim.api.nvim_win_get_config(win_id)
+  local row = config.row + config.height + 1
+  local col = config.col
+
+  local status_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[status_buf].buftype = "nofile"
+  vim.bo[status_buf].bufhidden = "wipe"
+  vim.bo[status_buf].swapfile = false
+
+  local status_win = vim.api.nvim_open_win(status_buf, false, {
+    relative = "editor",
+    width = config.width,
+    height = 1,
+    row = row,
+    col = col,
+    style = "minimal",
+    border = "rounded",
+    focusable = false,
+    zindex = 50,
+  })
+
+  return status_win, status_buf
+end
+
+---@param status_win integer
+---@param parent_win integer
+local function update_status_position(status_win, parent_win)
+  if not status_win or not vim.api.nvim_win_is_valid(status_win) then
+    return
   end
-  return extmark_id
+  if not parent_win or not vim.api.nvim_win_is_valid(parent_win) then
+    return
+  end
+  local config = vim.api.nvim_win_get_config(parent_win)
+  local status_width = 20
+  local row = config.row + config.height - 1
+  local col = config.col + config.width - status_width
+  vim.api.nvim_win_set_config(status_win, {
+    relative = "editor",
+    row = row,
+    col = col,
+  })
+end
+
+---@param status_win integer|nil
+local function close_status_bar(status_win)
+  if status_win and vim.api.nvim_win_is_valid(status_win) then
+    vim.api.nvim_win_close(status_win, true)
+  end
 end
 
 ---@param mode string
-local function update_mode_extmark(mode)
-  _extmark_id = render_extmark(_buf_id, _extmark_id, _name, mode)
+local function update_mode_status(mode)
+  render_status(_status_buf, _name, mode)
 end
 
 ---@param worker WorkerTerminal
 ---@param mode string
-local function update_worker_extmark(worker, mode)
-  worker.extmark_id = render_extmark(worker.buf_id, worker.extmark_id, worker.name, mode)
+local function update_worker_status(worker, mode)
+  render_status(worker.status_buf_id, worker.name, mode)
 end
 
 local function start_mode_tracking()
@@ -85,7 +143,7 @@ local function start_mode_tracking()
     pattern = "*:[tT]",
     callback = function()
       vim.schedule(function()
-        update_mode_extmark("t")
+        update_mode_status("t")
       end)
     end,
   })
@@ -94,11 +152,11 @@ local function start_mode_tracking()
     pattern = "[tT]*:n*",
     callback = function()
       vim.schedule(function()
-        update_mode_extmark("n")
+        update_mode_status("n")
       end)
     end,
   })
-  update_mode_extmark("t")
+  update_mode_status("t")
 end
 
 local function stop_mode_tracking()
@@ -119,7 +177,7 @@ local function start_worker_mode_tracking(worker)
     pattern = "*:[tT]",
     callback = function()
       vim.schedule(function()
-        update_worker_extmark(worker, "t")
+        update_worker_status(worker, "t")
       end)
     end,
   })
@@ -128,11 +186,11 @@ local function start_worker_mode_tracking(worker)
     pattern = "[tT]*:n*",
     callback = function()
       vim.schedule(function()
-        update_worker_extmark(worker, "n")
+        update_worker_status(worker, "n")
       end)
     end,
   })
-  update_worker_extmark(worker, "t")
+  update_worker_status(worker, "t")
 end
 
 ---@param worker WorkerTerminal
@@ -152,14 +210,13 @@ end
 
 local function close_window()
   stop_mode_tracking()
+  close_status_bar(_status_win)
   if _win_id and vim.api.nvim_win_is_valid(_win_id) then
     vim.api.nvim_win_close(_win_id, true)
   end
-  if _buf_id and vim.api.nvim_buf_is_valid(_buf_id) then
-    vim.api.nvim_buf_clear_namespace(_buf_id, ns_id, 0, -1)
-  end
   _win_id = nil
-  _extmark_id = nil
+  _status_win = nil
+  _status_buf = nil
 end
 
 local function close()
@@ -170,14 +227,13 @@ end
 ---@param worker WorkerTerminal
 local function close_worker_window(worker)
   stop_worker_mode_tracking(worker)
+  close_status_bar(worker.status_win_id)
   if worker.win_id and vim.api.nvim_win_is_valid(worker.win_id) then
     vim.api.nvim_win_close(worker.win_id, true)
   end
-  if worker.buf_id and vim.api.nvim_buf_is_valid(worker.buf_id) then
-    vim.api.nvim_buf_clear_namespace(worker.buf_id, ns_id, 0, -1)
-  end
   worker.win_id = nil
-  worker.extmark_id = nil
+  worker.status_win_id = nil
+  worker.status_buf_id = nil
 end
 
 ---@return WorkerTerminal|nil
@@ -197,8 +253,8 @@ function M.toggle()
   end
 
   local width = math.floor(vim.o.columns * 0.8)
-  local height = math.floor(vim.o.lines * 0.8)
-  local row = math.floor((vim.o.lines - height) / 2)
+  local height = math.floor(vim.o.lines * 0.8) - 1
+  local row = math.floor((vim.o.lines - height - 1) / 2)
   local col = math.floor((vim.o.columns - width) / 2)
 
   if _buf_id and vim.api.nvim_buf_is_valid(_buf_id) then
@@ -213,13 +269,13 @@ function M.toggle()
       title = " Terminal ",
       title_pos = "center",
     })
+    _status_win, _status_buf = create_status_bar(_win_id)
     start_mode_tracking()
     vim.cmd("startinsert")
     return
   end
 
   _buf_id = vim.api.nvim_create_buf(false, true)
-  _extmark_id = nil
   _win_id = vim.api.nvim_open_win(_buf_id, true, {
     relative = "editor",
     width = width,
@@ -231,6 +287,8 @@ function M.toggle()
     title = " Terminal ",
     title_pos = "center",
   })
+
+  _status_win, _status_buf = create_status_bar(_win_id)
 
   vim.fn.jobstart(vim.o.shell, {
     term = true,
@@ -269,20 +327,20 @@ function M.as_worker()
   local worker = {
     buf_id = _buf_id,
     win_id = nil,
-    extmark_id = nil,
+    status_win_id = nil,
+    status_buf_id = nil,
     augroup = nil,
     name = _name,
   }
 
   stop_mode_tracking()
+  close_status_bar(_status_win)
   if _win_id and vim.api.nvim_win_is_valid(_win_id) then
     vim.api.nvim_win_close(_win_id, true)
   end
-  if _buf_id and vim.api.nvim_buf_is_valid(_buf_id) then
-    vim.api.nvim_buf_clear_namespace(_buf_id, ns_id, 0, -1)
-  end
   _win_id = nil
-  _extmark_id = nil
+  _status_win = nil
+  _status_buf = nil
 
   _worker_counter = _worker_counter + 1
   _workers[_worker_counter] = worker
@@ -306,8 +364,8 @@ function M.toggle_worker(worker_id)
   end
 
   local width = math.floor(vim.o.columns * 0.8)
-  local height = math.floor(vim.o.lines * 0.8)
-  local row = math.floor((vim.o.lines - height) / 2)
+  local height = math.floor(vim.o.lines * 0.8) - 1
+  local row = math.floor((vim.o.lines - height - 1) / 2)
   local col = math.floor((vim.o.columns - width) / 2)
 
   if not worker.buf_id or not vim.api.nvim_buf_is_valid(worker.buf_id) then
@@ -339,12 +397,13 @@ function M.toggle_worker(worker_id)
     title_pos = "center",
   })
 
+  worker.status_win_id, worker.status_buf_id = create_status_bar(worker.win_id)
   start_worker_mode_tracking(worker)
   vim.cmd("startinsert")
 end
 
 function M._state()
-  return { win_id = _win_id, buf_id = _buf_id, extmark_id = _extmark_id, name = _name }
+  return { win_id = _win_id, buf_id = _buf_id, name = _name, status_buf_id = _status_buf }
 end
 
 function M._workers()
@@ -355,17 +414,49 @@ function M._workers()
   return result
 end
 
-function M._get_extmark_text()
-  if not _buf_id or not vim.api.nvim_buf_is_valid(_buf_id) or not _extmark_id then
+---@param worker_id integer
+---@return table|nil
+function M._worker_state(worker_id)
+  local worker = _workers[worker_id]
+  if not worker then
     return nil
   end
-  local cur_ns = vim.api.nvim_create_namespace("eap.terminals")
-  local ok, result = pcall(vim.api.nvim_buf_get_extmark_by_id, _buf_id, cur_ns, _extmark_id, { details = true })
-  if not ok or not result or not result[3] or not result[3].virt_text then
+  return {
+    id = worker_id,
+    name = worker.name,
+    buf_id = worker.buf_id,
+    win_id = worker.win_id,
+    status_win_id = worker.status_win_id,
+    status_buf_id = worker.status_buf_id,
+  }
+end
+
+function M._get_status_text()
+  if not _status_buf or not vim.api.nvim_buf_is_valid(_status_buf) then
+    return nil
+  end
+  local marks = vim.api.nvim_buf_get_extmarks(_status_buf, ns_id, 0, -1, { details = true })
+  if #marks == 0 or not marks[1][4] or not marks[1][4].virt_text then
     return nil
   end
   local parts = {}
-  for _, segment in ipairs(result[3].virt_text) do
+  for _, segment in ipairs(marks[1][4].virt_text) do
+    table.insert(parts, segment[1])
+  end
+  return table.concat(parts)
+end
+
+function M._get_worker_status_text(worker_id)
+  local worker = _workers[worker_id]
+  if not worker or not worker.status_buf_id or not vim.api.nvim_buf_is_valid(worker.status_buf_id) then
+    return nil
+  end
+  local marks = vim.api.nvim_buf_get_extmarks(worker.status_buf_id, ns_id, 0, -1, { details = true })
+  if #marks == 0 or not marks[1][4] or not marks[1][4].virt_text then
+    return nil
+  end
+  local parts = {}
+  for _, segment in ipairs(marks[1][4].virt_text) do
     table.insert(parts, segment[1])
   end
   return table.concat(parts)
@@ -375,7 +466,7 @@ function M.rename(name)
   _name = name or ""
   if is_open() then
     local mode = vim.fn.mode() == "t" and "t" or "n"
-    update_mode_extmark(mode)
+    update_mode_status(mode)
   end
 end
 

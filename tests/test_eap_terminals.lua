@@ -57,42 +57,37 @@ T["terminals.toggle()"]["singleton reuses buffer"] = function()
   eq(first_buf, second_buf)
 end
 
-T["terminals.mode()"] = new_set()
+T["terminals.status()"] = new_set()
 
-T["terminals.mode()"]["shows T in terminal mode"] = function()
+T["terminals.status()"]["shows T in terminal mode"] = function()
   child.lua([[M.toggle()]])
-  local text = child.lua("return M._get_extmark_text()")
+  local text = child.lua("return M._get_status_text()")
   eq(" T ", text)
 end
 
-T["terminals.mode()"]["shows N in normal mode"] = function()
+T["terminals.status()"]["shows N in normal mode"] = function()
   child.lua([[M.toggle()]])
   child.lua("vim.cmd('stopinsert')")
-  local text = child.lua("return M._get_extmark_text()")
+  local text = child.lua("return M._get_status_text()")
   eq(" N ", text)
 end
 
-T["terminals.mode()"]["updates when switching modes"] = function()
+T["terminals.status()"]["updates when switching modes"] = function()
   child.lua([[M.toggle()]])
-  eq(" T ", child.lua("return M._get_extmark_text()"))
+  eq(" T ", child.lua("return M._get_status_text()"))
   child.lua("vim.cmd('stopinsert')")
-  eq(" N ", child.lua("return M._get_extmark_text()"))
+  eq(" N ", child.lua("return M._get_status_text()"))
   child.lua("vim.cmd('startinsert')")
-  eq(" T ", child.lua("return M._get_extmark_text()"))
+  eq(" T ", child.lua("return M._get_status_text()"))
 end
 
-T["terminals.extmark()"] = new_set()
-
-T["terminals.extmark()"]["no duplicate extmarks after toggle cycle"] = function()
+T["terminals.status()"]["status window exists"] = function()
   child.lua([[M.toggle()]])
-  child.lua([[M.toggle()]])
-  child.lua([[M.toggle()]])
-  local count = child.lua([[
-    local ns = vim.api.nvim_create_namespace('eap.terminals')
-    local marks = vim.api.nvim_buf_get_extmarks(M._state().buf_id, ns, 0, -1, {})
-    return #marks
+  local has_status = child.lua([[
+    local state = M._state()
+    return state.win_id ~= nil
   ]])
-  eq(1, count)
+  eq(true, has_status)
 end
 
 T["terminals.rename()"] = new_set()
@@ -106,16 +101,16 @@ end
 T["terminals.rename()"]["shows name with T in terminal mode"] = function()
   child.lua([[M.toggle()]])
   child.lua([[M.rename("dev")]])
-  local text = child.lua("return M._get_extmark_text()")
-  eq(" T  dev ", text)
+  local text = child.lua("return M._get_status_text()")
+  eq(" dev  T ", text)
 end
 
 T["terminals.rename()"]["shows name with N in normal mode"] = function()
   child.lua([[M.toggle()]])
   child.lua([[M.rename("dev")]])
   child.lua("vim.cmd('stopinsert')")
-  local text = child.lua("return M._get_extmark_text()")
-  eq(" N  dev ", text)
+  local text = child.lua("return M._get_status_text()")
+  eq(" dev  N ", text)
 end
 
 T["terminals.rename()"]["name persists across toggle"] = function()
@@ -123,15 +118,15 @@ T["terminals.rename()"]["name persists across toggle"] = function()
   child.lua([[M.rename("prod")]])
   child.lua([[M.toggle()]])
   child.lua([[M.toggle()]])
-  local text = child.lua("return M._get_extmark_text()")
-  eq(" T  prod ", text)
+  local text = child.lua("return M._get_status_text()")
+  eq(" prod  T ", text)
 end
 
 T["terminals.rename()"]["clears name with empty string"] = function()
   child.lua([[M.toggle()]])
   child.lua([[M.rename("dev")]])
   child.lua([[M.rename("")]])
-  local text = child.lua("return M._get_extmark_text()")
+  local text = child.lua("return M._get_status_text()")
   eq(" T ", text)
 end
 
@@ -234,54 +229,40 @@ T["terminals.toggle_worker()"]["closes worker window"] = function()
   eq(nil, worker_state.win_id)
 end
 
-T["terminals.toggle_worker()"]["no duplicate extmarks after toggle cycle"] = function()
+T["terminals.toggle_worker()"]["no duplicate status windows after toggle cycle"] = function()
   child.lua([[M.toggle()]])
   child.lua([[M.rename("dev")]])
   child.lua([[M.as_worker()]])
   child.lua(string.format("M.toggle_worker(%d)", 1))
   child.lua(string.format("M.toggle_worker(%d)", 1))
   child.lua(string.format("M.toggle_worker(%d)", 1))
-  local count = child.lua([[
-    local ns = vim.api.nvim_create_namespace('eap.terminals')
-    local w = M._workers()[1]
-    local marks = vim.api.nvim_buf_get_extmarks(w.buf_id, ns, 0, -1, {})
-    return #marks
-  ]])
-  eq(1, count)
+  local ws = child.lua("return M._worker_state(1)")
+  eq(true, ws.status_win_id ~= nil)
+  eq(true, ws.status_buf_id ~= nil)
 end
 
-T["terminals.toggle_worker()"]["esc keymap exists on reopened worker"] = function()
+T["terminals.toggle_worker()"]["esc keymap exists on worker"] = function()
   child.lua([[M.toggle()]])
   child.lua([[M.rename("dev")]])
   child.lua([[M.as_worker()]])
-  child.lua(string.format("M.toggle_worker(%d)", 1))
-  child.lua(string.format("M.toggle_worker(%d)", 1))
   child.lua(string.format("M.toggle_worker(%d)", 1))
   local has_keymap = child.lua([[
-    local w = M._workers()[1]
-    for _, m in ipairs(vim.api.nvim_buf_get_keymap(w.buf_id, 't')) do
-      if m.lhs == '<Esc>' then return true end
-    end
-    return false
-  ]])
-  eq(true, has_keymap)
-end
-
-T["terminals.toggle_worker()"]["esc closes worker window"] = function()
-  child.lua([[M.toggle()]])
-  child.lua([[M.rename("dev")]])
-  child.lua([[M.as_worker()]])
-  child.lua(string.format("M.toggle_worker(%d)", 1))
-  local w = child.lua("return M._workers()[1]")
-  eq("number", type(w.win_id))
-  local has_keymap = child.lua(string.format([[
     local buf_id = M._workers()[1].buf_id
     for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf_id, 't')) do
       if m.lhs == '<Esc>' then return true end
     end
     return false
-  ]]))
+  ]])
   eq(true, has_keymap)
+end
+
+T["terminals.toggle_worker()"]["worker status shows name and mode"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  child.lua(string.format("M.toggle_worker(%d)", 1))
+  local text = child.lua("return M._get_worker_status_text(1)")
+  eq(" dev  T ", text)
 end
 
 T["terminals.pickers()"] = new_set()
