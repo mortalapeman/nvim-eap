@@ -3,6 +3,7 @@ require("eap.project").setup()
 require("eap.lsp").setup()
 require("eap.sqlite").setup({})
 require("eap.telescope").setup()
+require("eap.scratchpad").setup()
 
 local util = require("eap.util")
 local cwd = require("eap.cwd")
@@ -34,10 +35,6 @@ vim.api.nvim_create_autocmd("FileType", {
   desc = "Setup keymaps and other config specifically for lua files",
   group = vim.api.nvim_create_augroup("eap-ft-lua", { clear = true }),
   callback = function(ev)
-    vim.bo.expandtab = true
-    vim.bo.shiftwidth = 2
-    vim.bo.tabstop = 2
-
     vim.keymap.set("n", "<leader>e", function()
       vim.cmd([[
         write
@@ -51,9 +48,9 @@ vim.api.nvim_create_autocmd("FileType", {
 })
 
 vim.api.nvim_create_autocmd("FileType", {
-  pattern = { "json" },
+  pattern = { "json", "css", "scss", "js", "ts", "yaml", "lua" },
   desc = "Setup keymaps and other config specifically for json files",
-  group = vim.api.nvim_create_augroup("eap-ft-json", { clear = true }),
+  group = vim.api.nvim_create_augroup("eap-ft-2spaces", { clear = true }),
   callback = function()
     vim.bo.expandtab = true
     vim.bo.shiftwidth = 2
