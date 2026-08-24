@@ -182,11 +182,13 @@ function ScratchpadState:_open_in_split(filepath)
   vim.bo[self._buf_id].buftype = ""
   vim.bo[self._buf_id].filetype = "markdown"
   vim.api.nvim_win_set_height(self._win_id, 15)
+  self:_setup_lsp(self._buf_id)
 end
 
 function ScratchpadState:toggle()
   local win_id, _ = self:is_open()
   if win_id then
+    vim.api.nvim_clear_autocmds({ group = "eap_scratchpad_lsp" })
     vim.api.nvim_win_close(win_id, false)
     self._win_id = nil
     self._buf_id = nil
@@ -415,6 +417,39 @@ local function find_code_block_at_cursor(lines, cursor_line)
     end
   end
   return nil, nil, nil, nil, nil
+end
+
+---@param buf_id integer
+---@return string|nil
+local function detect_lang_at_cursor(buf_id)
+  local lines = vim.api.nvim_buf_get_lines(buf_id, 0, -1, false)
+  local cursor = vim.api.nvim_win_get_cursor(vim.api.nvim_get_current_win())
+  local _, _, lang = find_code_block_at_cursor(lines, cursor[1])
+  return lang
+end
+
+---@param buf_id integer
+function ScratchpadState:_setup_lsp(buf_id)
+  local augroup = vim.api.nvim_create_augroup("eap_scratchpad_lsp", { clear = true })
+  vim.api.nvim_create_autocmd("CursorMoved", {
+    group = augroup,
+    buffer = buf_id,
+    callback = function()
+      local lang = detect_lang_at_cursor(buf_id)
+      if lang then
+        vim.bo[buf_id].filetype = lang
+      else
+        vim.bo[buf_id].filetype = "markdown"
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd("LspAttach", {
+    group = augroup,
+    buffer = buf_id,
+    callback = function()
+      vim.diagnostic.enable(false, { bufnr = buf_id })
+    end,
+  })
 end
 
 ---@param result string
