@@ -135,4 +135,103 @@ T["terminals.rename()"]["clears name with empty string"] = function()
   eq(" T ", text)
 end
 
+T["terminals.as_worker()"] = new_set()
+
+T["terminals.as_worker()"]["fails without open terminal"] = function()
+  child.lua([[M.as_worker()]])
+  local workers = child.lua("return M._workers()")
+  eq(0, #workers)
+end
+
+T["terminals.as_worker()"]["fails without name"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.as_worker()]])
+  local workers = child.lua("return M._workers()")
+  eq(0, #workers)
+  local state = child.lua("return M._state()")
+  eq("number", type(state.buf_id))
+end
+
+T["terminals.as_worker()"]["moves terminal to workers"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  local workers = child.lua("return M._workers()")
+  eq(1, #workers)
+  eq("dev", workers[1].name)
+  local state = child.lua("return M._state()")
+  eq(nil, state.buf_id)
+end
+
+T["terminals.as_worker()"]["clears current terminal state"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  local state = child.lua("return M._state()")
+  eq(nil, state.win_id)
+  eq(nil, state.buf_id)
+  eq("", state.name)
+end
+
+T["terminals.as_worker()"]["creates new current terminal after moving"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  child.lua([[M.toggle()]])
+  local state = child.lua("return M._state()")
+  eq("number", type(state.buf_id))
+  eq("", state.name)
+end
+
+T["terminals.as_worker()"]["fails with duplicate name"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  local workers = child.lua("return M._workers()")
+  eq(1, #workers)
+end
+
+T["terminals.as_worker()"]["multiple workers with different names"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("prod")]])
+  child.lua([[M.as_worker()]])
+  local workers = child.lua("return M._workers()")
+  eq(2, #workers)
+end
+
+T["terminals.toggle_worker()"] = new_set()
+
+T["terminals.toggle_worker()"]["opens worker window"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  local workers = child.lua("return M._workers()")
+  child.lua(string.format("M.toggle_worker(%d)", workers[1].id))
+  local worker_state = child.lua(string.format([[
+    local w = M._workers()[1]
+    return { win_id = w.win_id }
+  ]]))
+  eq("number", type(worker_state.win_id))
+end
+
+T["terminals.toggle_worker()"]["closes worker window"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  local workers = child.lua("return M._workers()")
+  child.lua(string.format("M.toggle_worker(%d)", workers[1].id))
+  child.lua(string.format("M.toggle_worker(%d)", workers[1].id))
+  local worker_state = child.lua(string.format([[
+    local w = M._workers()[1]
+    return { win_id = w.win_id }
+  ]]))
+  eq(nil, worker_state.win_id)
+end
+
 return T

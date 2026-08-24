@@ -13,41 +13,66 @@ local _extmark_id = nil
 ---@type string
 local _name = ""
 
+---@class WorkerTerminal
+---@field buf_id integer
+---@field win_id integer|nil
+---@field extmark_id integer|nil
+---@field augroup integer|nil
+---@field name string
+---@type table<integer, WorkerTerminal>
+local _workers = {}
+local _worker_counter = 0
+
 local function setup_highlights()
   vim.api.nvim_set_hl(0, "EapTermNormal", { bg = "#5e81ac", fg = "#eceff4", bold = true })
   vim.api.nvim_set_hl(0, "EapTermTerminal", { bg = "#a3be8c", fg = "#eceff4", bold = true })
   vim.api.nvim_set_hl(0, "EapTermName", { bg = "#3b4252", fg = "#d8dee9", bold = true })
 end
 
+---@param buf_id integer
+---@param extmark_id integer|nil
+---@param name string
 ---@param mode string
-local function update_mode_extmark(mode)
-  if not _buf_id or not vim.api.nvim_buf_is_valid(_buf_id) then
-    return
+local function render_extmark(buf_id, extmark_id, name, mode)
+  if not buf_id or not vim.api.nvim_buf_is_valid(buf_id) then
+    return extmark_id
   end
   local mode_text = mode == "t" and " T " or " N "
   local mode_hl = mode == "t" and "EapTermTerminal" or "EapTermNormal"
   local virt_text = { { mode_text, mode_hl } }
-  if _name ~= "" then
-    table.insert(virt_text, { " " .. _name .. " ", "EapTermName" })
+  if name ~= "" then
+    table.insert(virt_text, { " " .. name .. " ", "EapTermName" })
   end
-  local line_count = vim.api.nvim_buf_line_count(_buf_id)
+  local line_count = vim.api.nvim_buf_line_count(buf_id)
   local line = line_count - 1
-  if _extmark_id then
-    local ok = pcall(vim.api.nvim_buf_set_extmark, _buf_id, ns_id, line, 0, {
-      id = _extmark_id,
+  if extmark_id then
+    local ok = pcall(vim.api.nvim_buf_set_extmark, buf_id, ns_id, line, 0, {
+      id = extmark_id,
       virt_text = virt_text,
       virt_text_pos = "eol",
     })
     if not ok then
-      _extmark_id = nil
+      extmark_id = nil
     end
   end
-  if not _extmark_id then
-    _extmark_id = vim.api.nvim_buf_set_extmark(_buf_id, ns_id, line, 0, {
+  if not extmark_id then
+    extmark_id = vim.api.nvim_buf_set_extmark(buf_id, ns_id, line, 0, {
       virt_text = virt_text,
       virt_text_pos = "eol",
     })
   end
+  return extmark_id
+end
+
+---@param mode string
+local function update_mode_extmark(mode)
+  _extmark_id = render_extmark(_buf_id, _extmark_id, _name, mode)
+end
+
+---@param worker WorkerTerminal
+---@param mode string
+local function update_worker_extmark(worker, mode)
+  worker.extmark_id = render_extmark(worker.buf_id, worker.extmark_id, worker.name, mode)
 end
 
 local function start_mode_tracking()
@@ -83,6 +108,41 @@ local function stop_mode_tracking()
   end
 end
 
+---@param worker WorkerTerminal
+local function start_worker_mode_tracking(worker)
+  if worker.augroup then
+    vim.api.nvim_del_augroup_by_id(worker.augroup)
+  end
+  worker.augroup = vim.api.nvim_create_augroup("eap_term_worker_" .. worker.name, { clear = true })
+  vim.api.nvim_create_autocmd("ModeChanged", {
+    group = worker.augroup,
+    pattern = "*:[tT]",
+    callback = function()
+      vim.schedule(function()
+        update_worker_extmark(worker, "t")
+      end)
+    end,
+  })
+  vim.api.nvim_create_autocmd("ModeChanged", {
+    group = worker.augroup,
+    pattern = "[tT]*:n*",
+    callback = function()
+      vim.schedule(function()
+        update_worker_extmark(worker, "n")
+      end)
+    end,
+  })
+  update_worker_extmark(worker, "t")
+end
+
+---@param worker WorkerTerminal
+local function stop_worker_mode_tracking(worker)
+  if worker.augroup then
+    vim.api.nvim_del_augroup_by_id(worker.augroup)
+    worker.augroup = nil
+  end
+end
+
 local function is_open()
   if _win_id and vim.api.nvim_win_is_valid(_win_id) then
     return true
@@ -105,6 +165,29 @@ end
 local function close()
   close_window()
   _buf_id = nil
+end
+
+---@param worker WorkerTerminal
+local function close_worker_window(worker)
+  stop_worker_mode_tracking(worker)
+  if worker.win_id and vim.api.nvim_win_is_valid(worker.win_id) then
+    vim.api.nvim_win_close(worker.win_id, true)
+  end
+  if worker.buf_id and vim.api.nvim_buf_is_valid(worker.buf_id) then
+    vim.api.nvim_buf_clear_namespace(worker.buf_id, ns_id, 0, -1)
+  end
+  worker.win_id = nil
+  worker.extmark_id = nil
+end
+
+---@return WorkerTerminal|nil
+local function find_worker_by_name(name)
+  for _, worker in pairs(_workers) do
+    if worker.name == name then
+      return worker
+    end
+  end
+  return nil
 end
 
 function M.toggle()
@@ -167,8 +250,105 @@ function M.toggle()
   vim.cmd("startinsert")
 end
 
+function M.as_worker()
+  if not is_open() then
+    vim.notify("No terminal is open", vim.log.levels.WARN)
+    return
+  end
+
+  if _name == "" then
+    vim.notify("Terminal must have a name before becoming a worker", vim.log.levels.WARN)
+    return
+  end
+
+  if find_worker_by_name(_name) then
+    vim.notify("A worker named '" .. _name .. "' already exists", vim.log.levels.WARN)
+    return
+  end
+
+  local worker = {
+    buf_id = _buf_id,
+    win_id = nil,
+    extmark_id = nil,
+    augroup = nil,
+    name = _name,
+  }
+
+  stop_mode_tracking()
+  if _win_id and vim.api.nvim_win_is_valid(_win_id) then
+    vim.api.nvim_win_close(_win_id, true)
+  end
+  _win_id = nil
+  _extmark_id = nil
+
+  _worker_counter = _worker_counter + 1
+  _workers[_worker_counter] = worker
+
+  _buf_id = nil
+  _name = ""
+
+  vim.notify("Terminal '" .. worker.name .. "' moved to worker", vim.log.levels.INFO)
+end
+
+---@param worker_id integer
+function M.toggle_worker(worker_id)
+  local worker = _workers[worker_id]
+  if not worker then
+    return
+  end
+
+  if worker.win_id and vim.api.nvim_win_is_valid(worker.win_id) then
+    close_worker_window(worker)
+    return
+  end
+
+  local width = math.floor(vim.o.columns * 0.8)
+  local height = math.floor(vim.o.lines * 0.8)
+  local row = math.floor((vim.o.lines - height) / 2)
+  local col = math.floor((vim.o.columns - width) / 2)
+
+  if not worker.buf_id or not vim.api.nvim_buf_is_valid(worker.buf_id) then
+    worker.buf_id = vim.api.nvim_create_buf(false, true)
+    vim.fn.jobstart(vim.o.shell, {
+      term = true,
+      on_exit = function()
+        vim.schedule(function()
+          close_worker_window(worker)
+        end)
+      end,
+    })
+    vim.keymap.set("t", "<Esc>", function()
+      close_worker_window(worker)
+      vim.cmd("stopinsert")
+    end, { buffer = worker.buf_id, silent = true })
+  end
+
+  worker.win_id = vim.api.nvim_open_win(worker.buf_id, true, {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    style = "minimal",
+    border = "rounded",
+    title = " " .. worker.name .. " ",
+    title_pos = "center",
+  })
+
+  start_worker_mode_tracking(worker)
+  vim.cmd("startinsert")
+end
+
 function M._state()
   return { win_id = _win_id, buf_id = _buf_id, extmark_id = _extmark_id, name = _name }
+end
+
+function M._workers()
+  local result = {}
+  for id, worker in pairs(_workers) do
+    table.insert(result, { id = id, name = worker.name, buf_id = worker.buf_id, win_id = worker.win_id })
+  end
+  return result
 end
 
 function M._get_extmark_text()
@@ -197,13 +377,27 @@ end
 
 function M.setup()
   setup_highlights()
-  vim.keymap.set("n", "<leader>lc", M.toggle, { desc = "Toggle floating terminal" })
+  vim.keymap.set("n", "<leader>to", M.toggle, { desc = "Toggle floating terminal" })
+  vim.keymap.set("n", "<leader>tx", M.as_worker, { desc = "Move terminal to worker" })
+  vim.keymap.set("n", "<leader>tr", function()
+    vim.ui.input({ prompt = "Terminal name: " }, function(name)
+      if name then
+        M.rename(name)
+      end
+    end)
+  end, { desc = "Rename floating terminal" })
 
   vim.api.nvim_create_user_command("TerminalRename", function(opts)
     M.rename(opts.args)
   end, {
     nargs = "?",
     desc = "Rename the floating terminal",
+  })
+
+  vim.api.nvim_create_user_command("TerminalAsWorker", function()
+    M.as_worker()
+  end, {
+    desc = "Move current terminal to a worker",
   })
 end
 
