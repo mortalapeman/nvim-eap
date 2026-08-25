@@ -175,6 +175,38 @@ end
 
 T["terminals.as_worker()"]["fails without name"] = function()
   child.lua([[M.toggle()]])
+  child.lua([[vim.ui.input = function(_, on_confirm) on_confirm(nil) end]])
+  child.lua([[M.as_worker()]])
+  local workers = child.lua("return M._workers()")
+  eq(0, #workers)
+  local state = child.lua("return M._state()")
+  eq("number", type(state.buf_id))
+end
+
+T["terminals.as_worker()"]["prompts for name and creates worker"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[vim.ui.input = function(_, on_confirm) on_confirm("ci") end]])
+  child.lua([[M.as_worker()]])
+  local workers = child.lua("return M._workers()")
+  eq(1, #workers)
+  eq("ci", workers[1].name)
+  local state = child.lua("return M._state()")
+  eq(nil, state.buf_id)
+end
+
+T["terminals.as_worker()"]["prompts for name and cancels on nil"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[vim.ui.input = function(_, on_confirm) on_confirm(nil) end]])
+  child.lua([[M.as_worker()]])
+  local workers = child.lua("return M._workers()")
+  eq(0, #workers)
+  local state = child.lua("return M._state()")
+  eq("number", type(state.buf_id))
+end
+
+T["terminals.as_worker()"]["prompts for name and cancels on empty string"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[vim.ui.input = function(_, on_confirm) on_confirm("") end]])
   child.lua([[M.as_worker()]])
   local workers = child.lua("return M._workers()")
   eq(0, #workers)

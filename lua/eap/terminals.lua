@@ -287,17 +287,7 @@ function M.toggle()
   end)
 end
 
-function M.as_worker()
-  if not is_open() then
-    vim.notify("No terminal is open", vim.log.levels.WARN)
-    return
-  end
-
-  if _name == "" then
-    vim.notify("Terminal must have a name before becoming a worker", vim.log.levels.WARN)
-    return
-  end
-
+local function do_as_worker()
   if find_worker_by_name(_name) then
     vim.notify("A worker named '" .. _name .. "' already exists", vim.log.levels.WARN)
     return
@@ -328,6 +318,26 @@ function M.as_worker()
   _name = ""
 
   vim.notify("Terminal '" .. worker.name .. "' moved to worker", vim.log.levels.INFO)
+end
+
+function M.as_worker()
+  if not is_open() then
+    vim.notify("No terminal is open", vim.log.levels.WARN)
+    return
+  end
+
+  if _name ~= "" then
+    do_as_worker()
+    return
+  end
+
+  vim.ui.input({ prompt = "Worker name: " }, function(name)
+    if not name or name == "" then
+      return
+    end
+    _name = name
+    do_as_worker()
+  end)
 end
 
 ---@param worker_id integer
