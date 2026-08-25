@@ -413,8 +413,9 @@ local function run_code(lang, lines, cwd)
   return executor(lines, cwd)
 end
 
----@param content string
----@return integer, integer, integer, integer, string # start_line, end_line, lang, code_lines
+---@param lines string[]
+---@param cursor_line integer
+---@return integer|nil, integer|nil, string|nil, string[]|nil # start_line, end_line, lang, code_lines
 local function find_code_block_at_cursor(lines, cursor_line)
   local fence_start = nil
   local fence_lang = nil
@@ -427,7 +428,7 @@ local function find_code_block_at_cursor(lines, cursor_line)
     end
   end
   if not fence_start then
-    return nil, nil, nil, nil, nil
+    return nil, nil, nil, nil
   end
   for i = fence_start + 1, #lines do
     if lines[i]:match("^```$") then
@@ -438,7 +439,7 @@ local function find_code_block_at_cursor(lines, cursor_line)
       return fence_start, i, fence_lang, code_lines
     end
   end
-  return nil, nil, nil, nil, nil
+  return nil, nil, nil, nil
 end
 
 ---@param buf_id integer
@@ -556,7 +557,7 @@ end
 
 function ScratchpadState:execute_at_cursor()
   local win_id, buf_id = self:is_open()
-  if not win_id then
+  if not win_id or not buf_id then
     vim.notify("No scratchpad is open", vim.log.levels.WARN)
     return
   end
@@ -564,7 +565,7 @@ function ScratchpadState:execute_at_cursor()
   local cursor = vim.api.nvim_win_get_cursor(win_id)
   local cursor_line = cursor[1]
   local fence_start, fence_end, lang, code_lines = find_code_block_at_cursor(lines, cursor_line)
-  if not fence_start then
+  if not fence_start or not code_lines or not lang then
     vim.notify("Cursor is not inside a code block", vim.log.levels.WARN)
     return
   end

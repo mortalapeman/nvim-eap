@@ -35,16 +35,6 @@ local function setup_highlights()
   vim.api.nvim_set_hl(0, "EapTermStatus", { bg = "#3b4252", fg = "#d8dee9" })
 end
 
----@param win_id integer
----@return integer, integer # width, height of the window
-local function get_win_size(win_id)
-  if not win_id or not vim.api.nvim_win_is_valid(win_id) then
-    return 0, 0
-  end
-  local config = vim.api.nvim_win_get_config(win_id)
-  return config.width, config.height
-end
-
 ---@param status_buf integer
 ---@param name string
 ---@param mode string
@@ -97,26 +87,6 @@ local function create_status_bar(win_id)
   return status_win, status_buf
 end
 
----@param status_win integer
----@param parent_win integer
-local function update_status_position(status_win, parent_win)
-  if not status_win or not vim.api.nvim_win_is_valid(status_win) then
-    return
-  end
-  if not parent_win or not vim.api.nvim_win_is_valid(parent_win) then
-    return
-  end
-  local config = vim.api.nvim_win_get_config(parent_win)
-  local status_width = 20
-  local row = config.row + config.height - 1
-  local col = config.col + config.width - status_width
-  vim.api.nvim_win_set_config(status_win, {
-    relative = "editor",
-    row = row,
-    col = col,
-  })
-end
-
 ---@param status_win integer|nil
 local function close_status_bar(status_win)
   if status_win and vim.api.nvim_win_is_valid(status_win) then
@@ -126,7 +96,9 @@ end
 
 ---@param mode string
 local function update_mode_status(mode)
-  render_status(_status_buf, _name, mode)
+  if _status_buf then
+    render_status(_status_buf, _name, mode)
+  end
 end
 
 ---@param worker WorkerTerminal
@@ -219,11 +191,6 @@ local function close_window()
   _win_id = nil
   _status_win = nil
   _status_buf = nil
-end
-
-local function close()
-  close_window()
-  _buf_id = nil
 end
 
 ---@param worker WorkerTerminal
@@ -422,6 +389,7 @@ function M.toggle_worker(worker_id)
   end)
 end
 
+-- Used in our tests to get module local information
 function M._state()
   return { win_id = _win_id, buf_id = _buf_id, name = _name, status_buf_id = _status_buf }
 end

@@ -380,10 +380,6 @@ function M.setup()
       state:save_last_cursor_pos(name, row, col)
     end,
   })
-  -- TODO: Activate Project
-  -- Setup a command that allows me to designate a startup project
-  -- and have it startup on vim enter. Also a command to deactivate the
-  -- startup project
 end
 
 return M

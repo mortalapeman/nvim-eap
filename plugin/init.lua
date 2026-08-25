@@ -66,3 +66,5 @@ vim.keymap.set("n", "<leader>yy", require("eap.loc").yank_current_line_as_loc, {
 vim.keymap.set("n", "<leader>gf", require("eap.loc").go_to_file_loc, {
   desc = "Go to file location under cursor.",
 })
+
+vim.keymap.set("t", [[<C-\><C-\>]], [[<C-\><C-n>]], { desc = "Exit terminal mode" })
