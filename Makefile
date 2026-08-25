@@ -22,3 +22,7 @@ deps/telescope.nvim:
 deps/plenary.nvim:
 	@mkdir -p deps
 	git clone --filter=blob:none https://github.com/nvim-lua/plenary.nvim $@
+
+# Format lua files with stylua
+format:
+	stylua lua/ tests/
