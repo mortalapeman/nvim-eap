@@ -14,6 +14,8 @@ local _status_win = nil
 local _status_buf = nil
 ---@type string
 local _name = ""
+---@type integer|nil
+local _active_worker_id = nil
 
 ---@class WorkerTerminal
 ---@field buf_id integer
@@ -234,6 +236,12 @@ local function close_worker_window(worker)
   worker.win_id = nil
   worker.status_win_id = nil
   worker.status_buf_id = nil
+  if _active_worker_id then
+    _active_worker_id = nil
+    _name = ""
+    _status_win = nil
+    _status_buf = nil
+  end
 end
 
 ---@return WorkerTerminal|nil
@@ -402,6 +410,10 @@ function M.toggle_worker(worker_id)
   })
 
   worker.status_win_id, worker.status_buf_id = create_status_bar(worker.win_id)
+  _active_worker_id = worker_id
+  _name = worker.name
+  _status_win = worker.status_win_id
+  _status_buf = worker.status_buf_id
   start_worker_mode_tracking(worker)
   vim.cmd("startinsert")
   vim.schedule(function()
@@ -472,9 +484,15 @@ end
 
 function M.rename(name)
   _name = name or ""
+  if _active_worker_id and _workers[_active_worker_id] then
+    _workers[_active_worker_id].name = _name
+  end
   if is_open() then
     local mode = vim.fn.mode() == "t" and "t" or "n"
     update_mode_status(mode)
+  elseif _active_worker_id and _workers[_active_worker_id] then
+    local mode = vim.fn.mode() == "t" and "t" or "n"
+    update_worker_status(_workers[_active_worker_id], mode)
   end
 end
 

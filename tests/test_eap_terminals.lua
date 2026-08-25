@@ -130,6 +130,41 @@ T["terminals.rename()"]["clears name with empty string"] = function()
   eq(" T ", text)
 end
 
+T["terminals.rename()"]["renames an already named terminal"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  eq("dev", child.lua("return M._state().name"))
+  child.lua([[M.rename("prod")]])
+  eq("prod", child.lua("return M._state().name"))
+  local text = child.lua("return M._get_status_text()")
+  eq(" T  prod ", text)
+end
+
+T["terminals.rename()"]["renames worker terminal"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("prod")]])
+  child.lua([[M.as_worker()]])
+  child.lua(string.format("M.toggle_worker(%d)", 1))
+  child.lua([[M.rename("renamed")]])
+  local workers = child.lua("return M._workers()")
+  eq("renamed", workers[1].name)
+  local text = child.lua("return M._get_status_text()")
+  eq(" T  renamed ", text)
+end
+
+T["terminals.rename()"]["renamed worker shows in picker"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("dev")]])
+  child.lua([[M.as_worker()]])
+  child.lua(string.format("M.toggle_worker(%d)", 1))
+  child.lua([[M.rename("prod")]])
+  local workers = child.lua("return M._workers()")
+  eq("prod", workers[1].name)
+end
+
 T["terminals.as_worker()"] = new_set()
 
 T["terminals.as_worker()"]["fails without open terminal"] = function()
