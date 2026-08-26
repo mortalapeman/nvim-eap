@@ -340,6 +340,34 @@ function M.as_worker()
   end)
 end
 
+function M.create_worker(name)
+  if not name or name == "" then
+    vim.notify("Worker name is required", vim.log.levels.WARN)
+    return
+  end
+
+  if find_worker_by_name(name) then
+    vim.notify("A worker named '" .. name .. "' already exists", vim.log.levels.WARN)
+    return
+  end
+
+  local worker = {
+    buf_id = nil,
+    win_id = nil,
+    status_win_id = nil,
+    status_buf_id = nil,
+    augroup = nil,
+    name = name,
+  }
+
+  _worker_counter = _worker_counter + 1
+  _workers[_worker_counter] = worker
+
+  local prev_name = _name
+  M.toggle_worker(_worker_counter)
+  _name = prev_name
+end
+
 ---@param worker_id integer
 function M.toggle_worker(worker_id)
   local worker = _workers[worker_id]
@@ -358,15 +386,7 @@ function M.toggle_worker(worker_id)
   local col = math.floor((vim.o.columns - width) / 2)
 
   if not worker.buf_id or not vim.api.nvim_buf_is_valid(worker.buf_id) then
-    worker.buf_id = vim.api.nvim_create_buf(false, true)
-    vim.fn.jobstart(vim.o.shell, {
-      term = true,
-      on_exit = function()
-        vim.schedule(function()
-          close_worker_window(worker)
-        end)
-      end,
-    })
+    worker.buf_id = vim.api.nvim_create_buf(false, false)
   end
 
   vim.keymap.set("t", "<Esc>", function()
@@ -385,6 +405,17 @@ function M.toggle_worker(worker_id)
     title = " " .. worker.name .. " ",
     title_pos = "center",
   })
+
+  if vim.bo[worker.buf_id].buftype ~= "terminal" then
+    vim.fn.jobstart(vim.o.shell, {
+      term = true,
+      on_exit = function()
+        vim.schedule(function()
+          close_worker_window(worker)
+        end)
+      end,
+    })
+  end
 
   worker.status_win_id, worker.status_buf_id = create_status_bar(worker.win_id)
   _active_worker_id = worker_id
@@ -546,6 +577,13 @@ function M.setup()
     end)
   end, { desc = "Rename floating terminal" })
   vim.keymap.set("n", "<leader>st", M.pickers, { desc = "Search worker terminals" })
+  vim.keymap.set("n", "<leader>tw", function()
+    vim.ui.input({ prompt = "Worker name: " }, function(name)
+      if name and name ~= "" then
+        M.create_worker(name)
+      end
+    end)
+  end, { desc = "Create worker terminal" })
 
   vim.api.nvim_create_user_command("TerminalRename", function(opts)
     M.rename(opts.args)
@@ -558,6 +596,13 @@ function M.setup()
     M.as_worker()
   end, {
     desc = "Move current terminal to a worker",
+  })
+
+  vim.api.nvim_create_user_command("TerminalCreateWorker", function(opts)
+    M.create_worker(opts.args)
+  end, {
+    nargs = 1,
+    desc = "Create a new worker terminal by name",
   })
 end
 

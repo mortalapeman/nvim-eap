@@ -364,4 +364,92 @@ T["terminals.pickers()"]["picker function exists"] = function()
   eq(true, exists)
 end
 
+T["terminals.create_worker()"] = new_set()
+
+T["terminals.create_worker()"]["creates worker with given name"] = function()
+  child.lua([[M.create_worker("dev")]])
+  local workers = child.lua("return M._workers()")
+  eq(1, #workers)
+  eq("dev", workers[1].name)
+end
+
+T["terminals.create_worker()"]["opens worker window immediately"] = function()
+  child.lua([[M.create_worker("dev")]])
+  local workers = child.lua("return M._workers()")
+  eq("number", type(workers[1].win_id))
+end
+
+T["terminals.create_worker()"]["fails with empty name"] = function()
+  child.lua([[M.create_worker("")]])
+  local workers = child.lua("return M._workers()")
+  eq(0, #workers)
+end
+
+T["terminals.create_worker()"]["fails with nil name"] = function()
+  child.lua([[M.create_worker(nil)]])
+  local workers = child.lua("return M._workers()")
+  eq(0, #workers)
+end
+
+T["terminals.create_worker()"]["fails with duplicate name"] = function()
+  child.lua([[M.create_worker("dev")]])
+  child.lua([[M.create_worker("dev")]])
+  local workers = child.lua("return M._workers()")
+  eq(1, #workers)
+end
+
+T["terminals.create_worker()"]["does not affect current terminal"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("main")]])
+  local buf_before = child.lua("return M._state().buf_id")
+  child.lua([[M.create_worker("dev")]])
+  local state = child.lua("return M._state()")
+  eq(buf_before, state.buf_id)
+  eq("main", state.name)
+end
+
+T["terminals.create_worker()"]["current terminal still works after creation"] = function()
+  child.lua([[M.toggle()]])
+  child.lua([[M.rename("main")]])
+  child.lua([[M.create_worker("dev")]])
+  child.lua([[M.toggle()]])
+  local state = child.lua("return M._state()")
+  eq("number", type(state.buf_id))
+end
+
+T["terminals.create_worker()"]["creates multiple workers with different names"] = function()
+  child.lua([[M.create_worker("dev")]])
+  child.lua([[M.create_worker("prod")]])
+  local workers = child.lua("return M._workers()")
+  eq(2, #workers)
+end
+
+T["terminals.create_worker()"]["worker status shows name and mode"] = function()
+  child.lua([[M.create_worker("dev")]])
+  child.lua("vim.cmd('stopinsert')")
+  local text = child.lua("return M._get_worker_status_text(1)")
+  eq(" N  dev ", text)
+end
+
+T["terminals.create_worker()"]["creates a real terminal with running shell"] = function()
+  child.lua([[M.create_worker("dev")]])
+  local is_terminal = child.lua([[
+    local buf_id = M._workers()[1].buf_id
+    return vim.bo[buf_id].buftype == "terminal"
+  ]])
+  eq(true, is_terminal)
+end
+
+T["terminals.create_worker()"]["worker has esc keymap"] = function()
+  child.lua([[M.create_worker("dev")]])
+  local has_keymap = child.lua([[
+    local buf_id = M._workers()[1].buf_id
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf_id, 't')) do
+      if m.lhs == '<Esc>' then return true end
+    end
+    return false
+  ]])
+  eq(true, has_keymap)
+end
+
 return T

@@ -163,6 +163,58 @@ function ScratchpadState:active()
   return nil
 end
 
+---@param scratchpad Scratchpad
+---@param new_name string
+function ScratchpadState:rename(scratchpad, new_name)
+  if not new_name or new_name == "" then
+    vim.notify("New name is required", vim.log.levels.WARN)
+    return
+  end
+
+  if new_name == scratchpad.name then
+    vim.notify("Name is already '" .. new_name .. "'", vim.log.levels.WARN)
+    return
+  end
+
+  local existing = self:find_by_name(new_name)
+  if existing then
+    vim.notify("A scratchpad named '" .. new_name .. "' already exists", vim.log.levels.WARN)
+    return
+  end
+
+  local old_filepath = scratchpad.filename
+  local new_filepath = self:_filepath(new_name)
+
+  local ok = vim.fn.rename(old_filepath, new_filepath)
+  if ok ~= 0 then
+    vim.notify("Failed to rename file: " .. old_filepath, vim.log.levels.ERROR)
+    return
+  end
+
+  local sql = string.format(
+    "update scratchpad set name = '%s', filename = '%s' where scratchpad_id = %d",
+    new_name,
+    new_filepath,
+    scratchpad.scratchpad_id
+  )
+  local _, error = sqlite.execute_sql(self._dbfile, sql)
+  if error and error ~= "No output" then
+    logger.error(error)
+    return
+  end
+
+  local win_id, _ = self:is_open()
+  if win_id then
+    vim.api.nvim_win_close(win_id, false)
+    self._win_id = nil
+    self._buf_id = nil
+    self:activate(scratchpad.scratchpad_id)
+    self:_open_in_split(new_filepath)
+  end
+
+  vim.notify("Renamed scratchpad '" .. scratchpad.name .. "' to '" .. new_name .. "'", vim.log.levels.INFO)
+end
+
 function ScratchpadState:show_info()
   local result, _ = sqlite.execute_sql_md(self._dbfile, "select * from scratchpad;")
   print(self._dbfile)
@@ -609,6 +661,14 @@ function M.setup()
   local state = ScratchpadState.new(fullpath, scratch_dir)
   state:init()
 
+  function M._state()
+    return state
+  end
+
+  function M._dbfile()
+    return fullpath
+  end
+
   vim.api.nvim_create_user_command("ScratchpadCreate", function()
     vim.ui.input({ prompt = "Scratchpad name: " }, function(name)
       if name and #name > 0 then
@@ -649,6 +709,37 @@ function M.setup()
     state:init()
   end, {
     desc = "Reset scratchpad database.",
+  })
+
+  vim.api.nvim_create_user_command("ScratchpadRename", function(opts)
+    local new_name = opts.args
+    if not new_name or new_name == "" then
+      vim.notify("Usage: ScratchpadRename <new_name>", vim.log.levels.WARN)
+      return
+    end
+    local active = state:active()
+    if active then
+      state:rename(active, new_name)
+      return
+    end
+    local pads = state:all()
+    if pads == nil or #pads == 0 then
+      vim.notify("No scratchpads exist", vim.log.levels.WARN)
+      return
+    end
+    vim.ui.select(pads, {
+      prompt = "Select a scratchpad to rename",
+      format_item = function(item)
+        return item.name
+      end,
+    }, function(choice)
+      if choice then
+        state:rename(choice, new_name)
+      end
+    end)
+  end, {
+    nargs = "?",
+    desc = "Rename a scratchpad.",
   })
 
   vim.keymap.set("n", "<leader>jt", function()
