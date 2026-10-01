@@ -28,7 +28,7 @@ local function navigate_from_loclist()
 end
 
 function M.search(opts)
-  local pattern = opts.args
+  local pattern = opts.fargs[1] or ""
   local quote = pattern:sub(1, 1)
   if (quote == '"' or quote == "'") and pattern:sub(-1) == quote then
     pattern = pattern:sub(2, -2)
@@ -39,7 +39,18 @@ function M.search(opts)
     return
   end
 
-  local result = vim.system({ "rg", "--vimgrep", "--fixed-strings", "--", pattern }, { text = true }):wait()
+  local command = { "rg", "--vimgrep", "--fixed-strings" }
+  for i = 2, #opts.fargs do
+    local extension = opts.fargs[i]:gsub("^%.", "")
+    if extension ~= "" then
+      table.insert(command, "--glob")
+      table.insert(command, "*." .. extension)
+    end
+  end
+  table.insert(command, "--")
+  table.insert(command, pattern)
+
+  local result = vim.system(command, { text = true }):wait()
   local lines = vim.split(result.stdout or "", "\n", { trimempty = true })
   local items = vim.fn.getqflist({ efm = "%f:%l:%c:%m", lines = lines }).items
 
@@ -95,7 +106,7 @@ function M.setup()
 
   vim.api.nvim_create_user_command("Rg", M.search, {
     nargs = "+",
-    desc = "Search with ripgrep and populate the location list",
+    desc = "Search with ripgrep and populate the location list (pattern [extensions...])",
   })
 
   vim.keymap.set("n", "<leader>ll", M.next, { desc = "Go to next location list item" })
