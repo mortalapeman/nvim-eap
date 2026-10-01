@@ -4,6 +4,7 @@ require("eap.sqlite").setup({})
 require("eap.telescope").setup()
 require("eap.scratchpad").setup()
 require("eap.terminals").setup()
+require("eap.rg").setup()
 
 local util = require("eap.util")
 local cwd = require("eap.cwd")
