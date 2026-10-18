@@ -27,12 +27,44 @@ local function navigate_from_loclist()
   vim.api.nvim_win_set_cursor(source_win, { item.lnum, math.max(item.col - 1, 0) })
 end
 
-function M.search(opts)
-  local pattern = opts.fargs[1] or ""
-  local quote = pattern:sub(1, 1)
-  if (quote == '"' or quote == "'") and pattern:sub(-1) == quote then
-    pattern = pattern:sub(2, -2)
+local dbg = require("eap.debug")
+
+local function parse_args(args)
+  local result = {}
+  local index = 1
+
+  while index <= #args do
+    while index <= #args and args:sub(index, index):match("%s") do
+      index = index + 1
+    end
+    if index > #args then
+      break
+    end
+
+    local quote = args:sub(index, index)
+    if quote == '"' or quote == "'" then
+      index = index + 1
+      local start = index
+      while index <= #args and args:sub(index, index) ~= quote do
+        index = index + 1
+      end
+      table.insert(result, args:sub(start, index - 1))
+      index = index + 1
+    else
+      local start = index
+      while index <= #args and not args:sub(index, index):match("%s") do
+        index = index + 1
+      end
+      table.insert(result, args:sub(start, index - 1))
+    end
   end
+
+  return result
+end
+
+function M.search(opts)
+  local args = parse_args(opts.args)
+  local pattern = args[1] or ""
 
   if pattern == "" then
     vim.notify("Rg requires a search pattern", vim.log.levels.ERROR)
@@ -40,8 +72,8 @@ function M.search(opts)
   end
 
   local command = { "rg", "--vimgrep", "--fixed-strings" }
-  for i = 2, #opts.fargs do
-    local extension = opts.fargs[i]:gsub("^%.", "")
+  for i = 2, #args do
+    local extension = args[i]:gsub("^%.", "")
     if extension ~= "" then
       table.insert(command, "--glob")
       table.insert(command, "*." .. extension)
