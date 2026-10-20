@@ -27,8 +27,6 @@ local function navigate_from_loclist()
   vim.api.nvim_win_set_cursor(source_win, { item.lnum, math.max(item.col - 1, 0) })
 end
 
-local dbg = require("eap.debug")
-
 local function parse_args(args)
   local result = {}
   local index = 1
