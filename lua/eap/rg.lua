@@ -61,8 +61,18 @@ local function parse_args(args)
 end
 
 function M.search(opts)
-  local args = parse_args(opts.args)
-  local pattern = args[1] or ""
+  local pattern, extensions
+  if opts.pattern ~= nil then
+    pattern = opts.pattern
+    extensions = opts.extensions or {}
+  else
+    local args = parse_args(opts.args)
+    pattern = args[1] or ""
+    extensions = {}
+    for i = 2, #args do
+      table.insert(extensions, args[i])
+    end
+  end
 
   if pattern == "" then
     vim.notify("Rg requires a search pattern", vim.log.levels.ERROR)
@@ -70,8 +80,8 @@ function M.search(opts)
   end
 
   local command = { "rg", "--vimgrep", "--fixed-strings" }
-  for i = 2, #args do
-    local extension = args[i]:gsub("^%.", "")
+  for _, ext in ipairs(extensions) do
+    local extension = ext:gsub("^%.", "")
     if extension ~= "" then
       table.insert(command, "--glob")
       table.insert(command, "*." .. extension)
@@ -106,6 +116,27 @@ function M.search(opts)
   end
 end
 
+function M.operator()
+  local start = vim.fn.getpos("'[")
+  local finish = vim.fn.getpos("']")
+  local lines = vim.fn.getline(start[2], finish[2])
+  if #lines == 1 then
+    lines[1] = lines[1]:sub(start[3], finish[3])
+  else
+    lines[1] = lines[1]:sub(start[3])
+    lines[#lines] = lines[#lines]:sub(1, finish[3])
+  end
+
+  local text = vim.trim(table.concat(lines, "\n"))
+  local extensions = {}
+  local extension = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":e")
+  if extension and extension ~= "" then
+    table.insert(extensions, extension)
+  end
+
+  M.search({ pattern = text, extensions = extensions })
+end
+
 function M.next()
   vim.cmd.lnext()
 end
@@ -138,6 +169,11 @@ function M.setup()
     nargs = "+",
     desc = "Search with ripgrep and populate the location list (pattern [extensions...])",
   })
+
+  vim.keymap.set("n", "<leader>r", function()
+    vim.go.operatorfunc = "v:lua.require'eap.rg'.operator"
+    return "g@"
+  end, { expr = true, desc = "Search text of motion with Rg (current filetype)" })
 
   vim.keymap.set("n", "<leader>ll", M.next, { desc = "Go to next location list item" })
   vim.keymap.set("n", "<leader>lh", M.previous, { desc = "Go to previous location list item" })
